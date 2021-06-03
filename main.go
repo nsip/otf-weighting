@@ -2,56 +2,48 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 
 	jt "github.com/cdutwhu/json-tool"
-	gotkio "github.com/digisan/gotk/io"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/tidwall/gjson"
+	"github.com/nsip/otf-weighting/store"
 )
 
 var (
 	port = 1329
-	sm   = &sync.Map{}
-	wg   = &sync.WaitGroup{}
 )
-
-func factoryStore(dir string) func(object []byte) {
-	var fIdx = 0
-	return func(object []byte) {
-		fIdx++
-		gotkio.MustWriteFile(fmt.Sprintf("./%s/%03d.json", dir, fIdx), object)
-	}
-}
-
-func cluster(object, keypath string) {
-
-	// time.Sleep(1 * time.Second) // delay test
-
-	key := gjson.Get(object, keypath)
-	sm.Store(key.String(), object)
-	wg.Done()
-}
 
 func main() {
 
 	const keypath = "otf.align.alignmentServiceID"
 
+	var (
+		mustarray = false
+		opt       = store.SaveOpt{
+			WG:  &sync.WaitGroup{},
+			Dir: "audit_otf",
+			Ext: "json",
+			SM:  &sync.Map{},
+			M:   nil,
+		}
+		save = opt.IDXSaveFactory(0) // opt.TSSave // opt.GUIDSave
+	)
+
 	e := echo.New()
 	e.Use(middleware.BodyLimit("2G"))
 
-	e.POST("/", func(c echo.Context) error {
+	e.POST("/post", func(c echo.Context) error {
 
-		var (
-			store = factoryStore("audit")
-		)
-
-		chRst, ok := jt.ScanArrayObject(c.Request().Body, true, jt.OUT_MIN)
+		chRst, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
 
 		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "Invalid JSON array")
+			log.Println("Invalid JSON array")
+			if mustarray {
+				return echo.NewHTTPError(http.StatusBadRequest, "Invalid JSON array")
+			}
 		}
 
 		for rst := range chRst {
@@ -60,17 +52,13 @@ func main() {
 				return echo.NewHTTPError(http.StatusBadRequest, "Invalid JSON @", rst.Err)
 			}
 
-			// audit
-			go store([]byte(rst.Obj))
-
-			// save to map
-			wg.Add(1)
-			go cluster(rst.Obj, keypath)
+			// key := gjson.Get(rst.Obj, keypath)
+			go save(rst.Obj)
 		}
 
-		wg.Wait()
+		opt.Wait()
 
-		value, _ := sm.Load("NiJ3XA2rB09PvBzhjqNNDS")
+		value, _ := opt.SM.Load("NiJ3XA2rB09PvBzhjqNNDS")
 		return c.String(http.StatusOK, fmt.Sprint(value))
 	})
 

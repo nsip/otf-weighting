@@ -2,6 +2,8 @@
 
 set -e
 
+rm -rf audit_otf
+
 for f in $(find ./ -name '*.log' -or -name '*.doc'); do rm $f; done
 
 # delete all Linux binary files
