@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 
 	jt "github.com/cdutwhu/json-tool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/nsip/otf-weighting/log"
 	"github.com/nsip/otf-weighting/store"
+	"github.com/tidwall/gjson"
 )
 
 var (
@@ -18,19 +19,28 @@ var (
 
 func main() {
 
-	const keypath = "otf.align.alignmentServiceID"
+	const keypath = "otf.id.studentID"
 
 	var (
+		ilog      = log.Factory4IdxLog(0)
 		mustarray = false
 		opt       = store.SaveOpt{
-			WG:  &sync.WaitGroup{},
-			Dir: "audit_otf",
-			Ext: "json",
-			SM:  &sync.Map{},
-			M:   nil,
+			WG:             &sync.WaitGroup{},
+			Mtx:            &sync.Mutex{},
+			Dir:            "audit_otf",
+			Ext:            "json",
+			OnFileConflict: FactoryAppendJA(),
+			SM:             &sync.Map{},
+			OnSMapConflict: FactoryAppendJA(),
+			M:              map[interface{}]interface{}{},
+			OnMapConflict:  FactoryAppendJA(),
 		}
-		save = opt.IDXSaveFactory(0) // opt.TSSave // opt.GUIDSave
+		save = opt.Save // opt.Factory4IdxSave(0) // opt.TSSave // opt.GUIDSave
 	)
+
+	ilog("starting...")
+
+	// ------------------------------------------- //
 
 	e := echo.New()
 	e.Use(middleware.BodyLimit("2G"))
@@ -39,11 +49,11 @@ func main() {
 
 		chRst, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
 
-		if !ok {
-			log.Println("Invalid JSON array")
-			if mustarray {
-				return echo.NewHTTPError(http.StatusBadRequest, "Invalid JSON array")
-			}
+		switch {
+		case !ok && mustarray:
+			return echo.NewHTTPError(http.StatusBadRequest, "Not JSON Array")
+		case !ok:
+			ilog("Not JSON Array")
 		}
 
 		for rst := range chRst {
@@ -52,8 +62,7 @@ func main() {
 				return echo.NewHTTPError(http.StatusBadRequest, "Invalid JSON @", rst.Err)
 			}
 
-			// key := gjson.Get(rst.Obj, keypath)
-			go save(rst.Obj)
+			go save(gjson.Get(rst.Obj, keypath).String(), rst.Obj)
 		}
 
 		opt.Wait()
