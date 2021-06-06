@@ -15,7 +15,7 @@ import (
 )
 
 type (
-	SaveOpt struct {
+	Option struct {
 		Dir, Ext       string                                       // file directory & file extension
 		OnFileConflict func(existing, coming string) (bool, string) // file conflict solver
 		SM             *sync.Map                                    // sync map ptr
@@ -29,7 +29,7 @@ type (
 	}
 )
 
-func (opt *SaveOpt) file(key, value string) {
+func (opt *Option) file(key, value string) {
 	if opt.Dir != "" {
 		absdir, _ := io.AbsPath(opt.Dir, false)
 		fullpath := filepath.Join(absdir, key) // full abs file name path without extension
@@ -60,7 +60,7 @@ func (opt *SaveOpt) file(key, value string) {
 	}
 }
 
-func (opt *SaveOpt) fileFetch(key string) (string, bool) {
+func (opt *Option) fileFetch(key string) (string, bool) {
 	if opt.Dir != "" {
 		absdir, _ := io.AbsPath(opt.Dir, false)
 		fullpath := filepath.Join(absdir, key)
@@ -84,13 +84,13 @@ func (opt *SaveOpt) fileFetch(key string) (string, bool) {
 
 // ----------------------- //
 
-func (opt *SaveOpt) sm(key, value string) {
+func (opt *Option) sm(key, value string) {
 	if opt.SM != nil {
 		opt.SM.Store(key, value)
 	}
 }
 
-func (opt *SaveOpt) smFetch(key string) (string, bool) {
+func (opt *Option) smFetch(key string) (string, bool) {
 	if opt.SM != nil {
 		if value, ok := opt.SM.Load(key); ok {
 			return value.(string), ok
@@ -101,13 +101,13 @@ func (opt *SaveOpt) smFetch(key string) (string, bool) {
 
 // ----------------------- //
 
-func (opt *SaveOpt) m(key, value string) {
+func (opt *Option) m(key, value string) {
 	if opt.M != nil {
 		opt.M[key] = value
 	}
 }
 
-func (opt *SaveOpt) mFetch(key string) (string, bool) {
+func (opt *Option) mFetch(key string) (string, bool) {
 	if opt.M != nil {
 		if value, ok := opt.M[key]; ok {
 			return value.(string), ok
@@ -120,7 +120,7 @@ func (opt *SaveOpt) mFetch(key string) (string, bool) {
 
 // ----------------------- //
 
-func (opt *SaveOpt) batchSave(key, value string) {
+func (opt *Option) batchSave(key, value string) {
 
 	defer func() {
 		if opt.WG != nil {
@@ -179,7 +179,7 @@ M:
 NEXT:
 }
 
-func (opt *SaveOpt) Wait() {
+func (opt *Option) Wait() {
 	if opt.WG != nil {
 		opt.WG.Wait()
 	}
@@ -187,18 +187,18 @@ func (opt *SaveOpt) Wait() {
 
 ///////////////////////////////////////////////////////
 
-func (opt *SaveOpt) Save(key, value string) {
+func (opt *Option) Save(key, value string) {
 	opt.batchSave(key, value)
 }
 
-func (opt *SaveOpt) Factory4IdxSave(start int) func(value string) {
+func (opt *Option) Factory4SaveKeyAsIdx(start int) func(value string) {
 	idx := int64(start - 1)
 	return func(value string) {
 		opt.batchSave(fmt.Sprintf("%04d", atomic.AddInt64(&idx, 1)), value)
 	}
 }
 
-func (opt *SaveOpt) TSSave(value string) {
+func (opt *Option) SaveKeyAsTS(value string) {
 	opt.batchSave(time.Now().Format("2006-01-02 15:04:05.000000"), value)
 
 	// current := time.Now()
@@ -210,6 +210,6 @@ func (opt *SaveOpt) TSSave(value string) {
 	// // yyyy-mm-dd HH:mm:ss:  2016-09-02 15:53:07.159994437
 }
 
-func (opt *SaveOpt) GUIDSave(value string) {
+func (opt *Option) SaveKeyAsID(value string) {
 	opt.batchSave(strings.ReplaceAll(uuid.New().String(), "-", ""), value)
 }

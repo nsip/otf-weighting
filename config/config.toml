@@ -1,0 +1,12 @@
+InboundFileType = "json"
+InboundMustArray = false
+AuditDir = "./audit_otf"
+
+[Service]
+Port = 1329
+API = "/weight"
+
+[Weighting]
+StudentIDPath = "otf.id.studentID"
+DomainPath = "meta.capability"
+ScorePath = "otf.level.calculatedScore.scaledScore"

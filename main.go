@@ -6,36 +6,44 @@ import (
 	"sync"
 
 	jt "github.com/cdutwhu/json-tool"
+	"github.com/digisan/gotk/slice/ts"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/nsip/otf-weighting/config"
 	"github.com/nsip/otf-weighting/log"
 	"github.com/nsip/otf-weighting/store"
+	"github.com/nsip/otf-weighting/util"
+	"github.com/nsip/otf-weighting/weight"
 	"github.com/tidwall/gjson"
-)
-
-var (
-	port = 1329
 )
 
 func main() {
 
-	const keypath = "otf.id.studentID"
-
 	var (
-		ilog      = log.Factory4IdxLog(0)
-		mustarray = false
-		opt       = store.SaveOpt{
+		cfg        = config.GetConfig("./config/config.toml", "./config.toml")
+		mustarray  = cfg.InboundMustArray
+		ext        = cfg.InboundFileType
+		auditdir   = cfg.AuditDir
+		port       = cfg.Service.Port
+		weightAPI  = cfg.Service.API
+		sidpath    = cfg.Weighting.StudentIDPath
+		domainpath = cfg.Weighting.DomainPath
+		scorepath  = cfg.Weighting.ScorePath
+
+		opt = &store.Option{
 			WG:             &sync.WaitGroup{},
 			Mtx:            &sync.Mutex{},
-			Dir:            "audit_otf",
-			Ext:            "json",
-			OnFileConflict: FactoryAppendJA(),
+			Dir:            auditdir,
+			Ext:            ext,
+			OnFileConflict: util.FactoryAppendJA(),
 			SM:             &sync.Map{},
-			OnSMapConflict: FactoryAppendJA(),
+			OnSMapConflict: util.FactoryAppendJA(),
 			M:              map[interface{}]interface{}{},
-			OnMapConflict:  FactoryAppendJA(),
+			OnMapConflict:  util.FactoryAppendJA(),
 		}
-		save = opt.Save // opt.Factory4IdxSave(0) // opt.TSSave // opt.GUIDSave
+		save = opt.Save // opt.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
+
+		ilog = log.Factory4IdxLog(0)
 	)
 
 	ilog("starting...")
@@ -45,9 +53,9 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.BodyLimit("2G"))
 
-	e.POST("/post", func(c echo.Context) error {
+	e.POST(weightAPI, func(c echo.Context) error {
 
-		chRst, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
+		chRstObj, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
 
 		switch {
 		case !ok && mustarray:
@@ -56,19 +64,32 @@ func main() {
 			ilog("Not JSON Array")
 		}
 
-		for rst := range chRst {
+		// store once POST student ID group
+		sidGrp := []string{}
 
+		for rst := range chRstObj {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, "Invalid JSON @", rst.Err)
 			}
-
-			go save(gjson.Get(rst.Obj, keypath).String(), rst.Obj)
+			sid := gjson.Get(rst.Obj, sidpath).String() // fetch sid from studentID path
+			sidGrp = append(sidGrp, sid)                // store each sid
+			go save(sid, rst.Obj)                       // save each otf processed json
 		}
 
+		// wait for storing finish
 		opt.Wait()
 
-		value, _ := opt.SM.Load("NiJ3XA2rB09PvBzhjqNNDS")
-		return c.String(http.StatusOK, fmt.Sprint(value))
+		// process each sid's score weighting
+		wtOutput := ""
+		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), opt, domainpath, scorepath)
+		for rst := range chRstWt {
+			if rst.Err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "Storage Inconsistent @", rst.Err)
+			}
+			wtOutput = util.PushJA(wtOutput, rst.WtInfo)
+		}
+
+		return c.String(http.StatusOK, wtOutput)
 	})
 
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", port)))
