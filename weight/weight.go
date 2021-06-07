@@ -42,7 +42,7 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 			n++
 		}
 		score = score / n
-		chRstWt <- RstWt{WtInfo: fmt.Sprintf(`{"studentID":"%s","domain":"%s","weight":%d,"data":%s}`, sid, domain, score, otfstr)}
+		chRstWt <- RstWt{WtInfo: fmt.Sprintf(`{"studentID":"%s","domain":"%s","weight":%d,"refer":%s}`, sid, domain, score, otfstr)}
 	}
 }
 

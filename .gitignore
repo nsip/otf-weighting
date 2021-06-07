@@ -15,4 +15,5 @@
 # vendor/
 
 otf-weighting
-audit_otf/
+in/
+out/

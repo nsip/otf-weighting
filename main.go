@@ -22,26 +22,31 @@ func main() {
 	var (
 		cfg        = config.GetConfig("./config/config.toml", "./config.toml")
 		mustarray  = cfg.InboundMustArray
-		ext        = cfg.InboundFileType
-		auditdir   = cfg.AuditDir
-		port       = cfg.Service.Port
-		weightAPI  = cfg.Service.API
 		sidpath    = cfg.Weighting.StudentIDPath
 		domainpath = cfg.Weighting.DomainPath
 		scorepath  = cfg.Weighting.ScorePath
 
-		opt = &store.Option{
+		optIn = &store.Option{
 			WG:             &sync.WaitGroup{},
 			Mtx:            &sync.Mutex{},
-			Dir:            auditdir,
-			Ext:            ext,
+			Dir:            cfg.InStorage,
+			Ext:            cfg.InboundType,
 			OnFileConflict: util.FactoryAppendJA(),
 			SM:             &sync.Map{},
 			OnSMapConflict: util.FactoryAppendJA(),
 			M:              map[interface{}]interface{}{},
 			OnMapConflict:  util.FactoryAppendJA(),
 		}
-		save = opt.Save // opt.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
+		saveIn = optIn.Save // optIn.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
+
+		optOut = &store.Option{
+			WG:             &sync.WaitGroup{},
+			Mtx:            &sync.Mutex{},
+			Dir:            cfg.OutStorage,
+			Ext:            cfg.OutboundType,
+			OnFileConflict: util.FactoryAppendJA(),
+		}
+		saveOut = optOut.Factory4SaveKeyAsIdx(0)
 
 		ilog = log.Factory4IdxLog(0)
 	)
@@ -53,7 +58,7 @@ func main() {
 	e := echo.New()
 	e.Use(middleware.BodyLimit("2G"))
 
-	e.POST(weightAPI, func(c echo.Context) error {
+	e.POST(cfg.Service.API, func(c echo.Context) error {
 
 		chRstObj, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
 
@@ -73,24 +78,25 @@ func main() {
 			}
 			sid := gjson.Get(rst.Obj, sidpath).String() // fetch sid from studentID path
 			sidGrp = append(sidGrp, sid)                // store each sid
-			go save(sid, rst.Obj)                       // save each otf processed json
+			go saveIn(sid, rst.Obj, true)               // save each otf processed json
 		}
 
 		// wait for storing finish
-		opt.Wait()
+		optIn.Wait()
 
 		// process each sid's score weighting
 		wtOutput := ""
-		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), opt, domainpath, scorepath)
+		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), optIn, domainpath, scorepath)
 		for rst := range chRstWt {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "Storage Inconsistent @", rst.Err)
 			}
 			wtOutput = util.PushJA(wtOutput, rst.WtInfo)
 		}
+		saveOut(wtOutput)
 
 		return c.String(http.StatusOK, wtOutput)
 	})
 
-	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", port)))
+	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", cfg.Service.Port)))
 }

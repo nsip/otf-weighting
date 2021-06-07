@@ -2,7 +2,8 @@
 
 set -e
 
-rm -rf audit_otf
+rm -rf in
+rm -rf out
 
 for f in $(find ./ -name '*.log' -or -name '*.doc'); do rm $f; done
 

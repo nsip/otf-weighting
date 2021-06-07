@@ -1,6 +1,8 @@
-InboundFileType = "json"
+InboundType = "json"
 InboundMustArray = false
-AuditDir = "./audit_otf"
+InStorage = "./in"
+OutboundType = "json"
+OutStorage = "./out"
 
 [Service]
 Port = 1329

@@ -22,30 +22,32 @@ type (
 		OnSMapConflict func(existing, coming string) (bool, string) // sync map conflict solver
 		M              map[interface{}]interface{}                  // map
 		OnMapConflict  func(existing, coming string) (bool, string) // map conflict solver
-
 		// more ...
+
 		WG  *sync.WaitGroup
 		Mtx *sync.Mutex
 	}
 )
 
-func (opt *Option) file(key, value string) {
+func (opt *Option) file(key, value string, repeatIdx bool) {
 	if opt.Dir != "" {
 		absdir, _ := io.AbsPath(opt.Dir, false)
 		fullpath := filepath.Join(absdir, key) // full abs file name path without extension
 		ext := strings.TrimLeft(opt.Ext, ".")  // extension without prefix '.'
 		prevpath := ""
 
-		// record duplicate key number in fullpath as .../key(number).ext
-		if matches, err := filepath.Glob(fullpath + "(*)." + ext); err == nil {
-			if len(matches) > 0 {
-				prevpath = matches[0]
-				fname := filepath.Base(prevpath)
-				pO, pC := strings.Index(fname, "("), strings.Index(fname, ")")
-				num, _ := strconv.Atoi(fname[pO+1 : pC])
-				fullpath = filepath.Join(absdir, fmt.Sprintf("%s(%d)", fname[:pO], num+1))
-			} else {
-				fullpath = fmt.Sprintf("%s(1)", fullpath)
+		if repeatIdx {
+			// record duplicate key number in fullpath as .../key(number).ext
+			if matches, err := filepath.Glob(fullpath + "(*)." + ext); err == nil {
+				if len(matches) > 0 {
+					prevpath = matches[0]
+					fname := filepath.Base(prevpath)
+					pO, pC := strings.Index(fname, "("), strings.Index(fname, ")")
+					num, _ := strconv.Atoi(fname[pO+1 : pC])
+					fullpath = filepath.Join(absdir, fmt.Sprintf("%s(%d)", fname[:pO], num+1))
+				} else {
+					fullpath = fmt.Sprintf("%s(1)", fullpath)
+				}
 			}
 		}
 
@@ -60,17 +62,22 @@ func (opt *Option) file(key, value string) {
 	}
 }
 
-func (opt *Option) fileFetch(key string) (string, bool) {
+func (opt *Option) fileFetch(key string, repeatIdx bool) (string, bool) {
 	if opt.Dir != "" {
 		absdir, _ := io.AbsPath(opt.Dir, false)
 		fullpath := filepath.Join(absdir, key)
 		ext := strings.TrimLeft(opt.Ext, ".")
 
-		// search path with .../key(number).ext
-		if matches, err := filepath.Glob(fullpath + "(*)." + ext); err == nil {
-			if len(matches) > 0 {
-				fullpath = matches[0]
+		if repeatIdx {
+			// search path with .../key(number).ext
+			if matches, err := filepath.Glob(fullpath + "(*)." + ext); err == nil {
+				if len(matches) > 0 {
+					fullpath = matches[0]
+				}
 			}
+		} else {
+			// add extension
+			fullpath = strings.TrimRight(fullpath+"."+ext, ".") // if no ext, remove last '.'
 		}
 
 		if io.FileExists(fullpath) {
@@ -120,7 +127,7 @@ func (opt *Option) mFetch(key string) (string, bool) {
 
 // ----------------------- //
 
-func (opt *Option) batchSave(key, value string) {
+func (opt *Option) batchSave(key, value string, repeatIdx bool) {
 
 	defer func() {
 		if opt.WG != nil {
@@ -144,14 +151,14 @@ func (opt *Option) batchSave(key, value string) {
 	}
 
 	if opt.OnFileConflict != nil {
-		if str, ok := opt.fileFetch(key); ok { // conflicts
+		if str, ok := opt.fileFetch(key, repeatIdx); ok { // conflicts
 			if save, content := opt.OnFileConflict(str, value); save {
-				opt.file(key, content)
+				opt.file(key, content, repeatIdx)
 			}
 			goto SM
 		}
 	}
-	opt.file(key, value)
+	opt.file(key, value, repeatIdx)
 
 SM:
 	if opt.OnSMapConflict != nil {
@@ -187,19 +194,19 @@ func (opt *Option) Wait() {
 
 ///////////////////////////////////////////////////////
 
-func (opt *Option) Save(key, value string) {
-	opt.batchSave(key, value)
+func (opt *Option) Save(key, value string, fileNameRepeatIdx bool) {
+	opt.batchSave(key, value, fileNameRepeatIdx)
 }
 
 func (opt *Option) Factory4SaveKeyAsIdx(start int) func(value string) {
 	idx := int64(start - 1)
 	return func(value string) {
-		opt.batchSave(fmt.Sprintf("%04d", atomic.AddInt64(&idx, 1)), value)
+		opt.batchSave(fmt.Sprintf("%04d", atomic.AddInt64(&idx, 1)), value, false)
 	}
 }
 
 func (opt *Option) SaveKeyAsTS(value string) {
-	opt.batchSave(time.Now().Format("2006-01-02 15:04:05.000000"), value)
+	opt.batchSave(time.Now().Format("2006-01-02 15:04:05.000000"), value, false)
 
 	// current := time.Now()
 	// // StampMicro
@@ -211,5 +218,5 @@ func (opt *Option) SaveKeyAsTS(value string) {
 }
 
 func (opt *Option) SaveKeyAsID(value string) {
-	opt.batchSave(strings.ReplaceAll(uuid.New().String(), "-", ""), value)
+	opt.batchSave(strings.ReplaceAll(uuid.New().String(), "-", ""), value, false)
 }

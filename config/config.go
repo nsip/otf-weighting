@@ -10,9 +10,11 @@ import (
 
 // Config :
 type Config struct {
-	InboundFileType  string
+	InboundType      string
 	InboundMustArray bool
-	AuditDir         string
+	InStorage        string
+	OutboundType     string
+	OutStorage       string
 	Service          struct {
 		Port int
 		API  string
@@ -34,7 +36,8 @@ func GetConfig(configs ...string) *Config {
 		}
 
 		// Directory Process
-		cfg.AuditDir = filepath.Clean(cfg.AuditDir)
+		cfg.InStorage = filepath.Clean(cfg.InStorage)
+		cfg.OutStorage = filepath.Clean(cfg.OutStorage)
 
 		// API Process
 		cfg.Service.API = withSlash(cfg.Service.API)
