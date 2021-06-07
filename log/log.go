@@ -47,7 +47,7 @@ func trackCaller(lvl int) (string, int, string) {
 }
 
 func Factory4IdxLog(start int) func(v ...interface{}) {
-	log.SetFlags(0)
+	log.SetFlags(log.LstdFlags)
 	index := int64(start - 1)
 	return func(v ...interface{}) {
 		f, l, fn := trackCaller(1)

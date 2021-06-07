@@ -20,9 +20,10 @@ type Config struct {
 		API  string
 	}
 	Weighting struct {
-		StudentIDPath string
-		DomainPath    string
-		ScorePath     string
+		ReferPrevRecord bool
+		StudentIDPath   string
+		DomainPath      string
+		ScorePath       string
 	}
 }
 

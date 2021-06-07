@@ -2,6 +2,8 @@ package store
 
 import (
 	"fmt"
+	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -219,4 +221,53 @@ func (opt *Option) SaveKeyAsTS(value string) {
 
 func (opt *Option) SaveKeyAsID(value string) {
 	opt.batchSave(strings.ReplaceAll(uuid.New().String(), "-", ""), value, false)
+}
+
+///////////////////////////////////////////////////////
+
+func (opt *Option) Synchronise() bool {
+	if io.DirExists(opt.Dir) {
+		err := filepath.WalkDir(opt.Dir,
+			func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if !strings.HasSuffix(path, withDot(opt.Ext)) {
+					return nil
+				}
+				fname := filepath.Base(path)
+				key := fname[:strings.IndexAny(fname, "(.")]
+				if bytes, err := os.ReadFile(path); err == nil {
+					value := string(bytes)
+					opt.sm(key, value)
+					opt.m(key, value)
+				} else {
+					return err
+				}
+				return nil
+			})
+
+		if err != nil {
+			log.Println(err)
+		}
+	}
+	return false
+}
+
+func withDot(str string) string {
+	return "." + strings.TrimLeft(str, ".")
+}
+
+///////////////////////////////////////////////////////
+
+func (opt *Option) Clear() {
+	if io.DirExists(opt.Dir) {
+		os.RemoveAll(opt.Dir)
+	}
+	if opt.M != nil {
+		opt.M = make(map[interface{}]interface{})
+	}
+	if opt.SM != nil {
+		opt.SM = &sync.Map{}
+	}
 }

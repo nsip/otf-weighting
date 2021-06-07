@@ -21,10 +21,12 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 
 	defer wg.Done()
 
-	value, ok := opt.SM.Load(sid)
+	value, ok := opt.M[sid]
 	if !ok {
-		chRstWt <- RstWt{Err: fmt.Errorf("sid@%s is not in SM", sid)}
-		return
+		if value, ok = opt.SM.Load(sid); !ok {
+			chRstWt <- RstWt{Err: fmt.Errorf("sid@%s is not in map or sync.map storage", sid)}
+			return
+		}
 	}
 
 	mDomain := make(map[string]string)

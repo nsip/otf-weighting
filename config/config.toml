@@ -9,6 +9,7 @@ Port = 1329
 API = "/weight"
 
 [Weighting]
+ReferPrevRecord = true
 StudentIDPath = "otf.id.studentID"
 DomainPath = "meta.capability"
 ScorePath = "otf.level.calculatedScore.scaledScore"
