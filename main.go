@@ -24,6 +24,7 @@ func main() {
 		mustarray  = cfg.InboundMustArray
 		sidpath    = cfg.Weighting.StudentIDPath
 		domainpath = cfg.Weighting.DomainPath
+		timepath   = cfg.Weighting.TimePath
 		scorepath  = cfg.Weighting.ScorePath
 
 		optIn = &store.Option{
@@ -92,19 +93,19 @@ func main() {
 
 		// process each sid's score weighting
 		wtOutput := ""
-		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), optIn, domainpath, scorepath)
+		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), optIn, domainpath, timepath, scorepath)
 		for rst := range chRstWt {
 			if rst.Err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "Storage Inconsistent @", rst.Err)
+				return echo.NewHTTPError(http.StatusInternalServerError, rst.Err.Error())
 			}
-			wtOutput = util.PushJA(wtOutput, rst.WtInfo)
+			wtOutput = util.PushJA(wtOutput, rst.Info)
 		}
 		saveOut(wtOutput)
 
 		return c.String(http.StatusOK, wtOutput)
 	})
 
-	// GET /weight?sid=12345&domain=math
+	// GET eg. /weight?sid=12345&domain=math&date=20210607
 	e.GET(cfg.Service.API, func(c echo.Context) error {
 
 		optAudit := &store.Option{
@@ -117,22 +118,33 @@ func main() {
 		optAudit.Clear()
 		saveAudit := optAudit.Factory4SaveKeyAsIdx(0)
 
-		sid := c.QueryParam("sid")
-		domain := c.QueryParam("domain")
+		var (
+			sid     = c.QueryParam("sid")
+			domain  = c.QueryParam("domain")
+			date    = c.QueryParam("date")
+			wtOut   = ""
+			chRstWt = weight.AsyncProc([]string{sid}, optIn, domainpath, timepath, scorepath)
+		)
 
-		wtOutput := ""
-		chRstWt := weight.AsyncProc([]string{sid}, optIn, domainpath, scorepath)
 		for rst := range chRstWt {
 			if rst.Err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, "Storage Inconsistent @", rst.Err)
+				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
-			if domain == "" || gjson.Get(rst.WtInfo, "domain").String() == domain {
-				wtOutput = util.PushJA(wtOutput, rst.WtInfo)
+
+			domValue := gjson.Get(rst.Info, "domain").String()
+			dateValue := gjson.Get(rst.Info, "date").String()
+
+			switch {
+			case (domValue == domain && dateValue == date) ||
+				(domValue == domain && date == "") ||
+				(domain == "" && dateValue == date) ||
+				(domain == "" && date == ""):
+				wtOut = util.PushJA(wtOut, rst.Info)
 			}
 		}
-		saveAudit(wtOutput)
+		saveAudit(wtOut)
 
-		return c.String(http.StatusOK, wtOutput)
+		return c.String(http.StatusOK, wtOut)
 	})
 
 	e.Logger.Fatal(e.Start(fmt.Sprintf(":%d", cfg.Service.Port)))

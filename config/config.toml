@@ -12,4 +12,5 @@ API = "/weight"
 ReferPrevRecord = true
 StudentIDPath = "otf.id.studentID"
 DomainPath = "meta.capability"
+TimePath="meta.readTimestampUTC"
 ScorePath = "otf.level.calculatedScore.scaledScore"

@@ -23,6 +23,7 @@ type Config struct {
 		ReferPrevRecord bool
 		StudentIDPath   string
 		DomainPath      string
+		TimePath        string
 		ScorePath       string
 	}
 }
