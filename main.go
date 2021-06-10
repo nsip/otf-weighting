@@ -55,7 +55,7 @@ func main() {
 	ilog("starting...")
 
 	if cfg.Weighting.ReferPrevRecord {
-		optIn.Synchronise()
+		ilog(fmt.Sprintf("synchronised sid count: %d", optIn.Synchronise()))
 		ilog("existing sid count:", len(optIn.M))
 	}
 
@@ -96,7 +96,7 @@ func main() {
 		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), optIn, domainpath, timepath, scorepath)
 		for rst := range chRstWt {
 			if rst.Err != nil {
-				return echo.NewHTTPError(http.StatusInternalServerError, rst.Err.Error())
+				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
 			wtOutput = util.PushJA(wtOutput, rst.Info)
 		}

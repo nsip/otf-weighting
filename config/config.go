@@ -2,7 +2,9 @@ package config
 
 import (
 	"log"
+	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -10,6 +12,7 @@ import (
 
 // Config :
 type Config struct {
+	FatalOnErr       bool
 	InboundType      string
 	InboundMustArray bool
 	InStorage        string
@@ -43,6 +46,9 @@ func GetConfig(configs ...string) *Config {
 
 		// API Process
 		cfg.Service.API = withSlash(cfg.Service.API)
+
+		// Env
+		os.Setenv("FatalOnErr", strconv.FormatBool(cfg.FatalOnErr))
 
 		return cfg
 	}

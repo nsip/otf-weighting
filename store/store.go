@@ -2,7 +2,6 @@ package store
 
 import (
 	"fmt"
-	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/digisan/gotk/io"
+	"github.com/digisan/gotk/slice/ts"
 	"github.com/google/uuid"
 )
 
@@ -225,33 +225,27 @@ func (opt *Option) SaveKeyAsID(value string) {
 
 ///////////////////////////////////////////////////////
 
-func (opt *Option) Synchronise() bool {
-	if io.DirExists(opt.Dir) {
-		err := filepath.WalkDir(opt.Dir,
-			func(path string, d fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if !strings.HasSuffix(path, withDot(opt.Ext)) {
-					return nil
-				}
-				fname := filepath.Base(path)
-				key := fname[:strings.IndexAny(fname, "(.")]
-				if bytes, err := os.ReadFile(path); err == nil {
-					value := string(bytes)
-					opt.sm(key, value)
-					opt.m(key, value)
-				} else {
-					return err
-				}
-				return nil
-			})
-
-		if err != nil {
-			log.Println(err)
-		}
+func (opt *Option) Synchronise() int {
+	files, _, err := io.WalkFileDir(opt.Dir, true)
+	if err != nil {
+		return 0
 	}
-	return false
+	return len(ts.FM(
+		files,
+		func(i int, e string) bool { return strings.HasSuffix(e, withDot(opt.Ext)) },
+		func(i int, e string) string {
+			fname := filepath.Base(e)
+			key := fname[:strings.IndexAny(fname, "(.")]
+			if bytes, err := os.ReadFile(e); err == nil {
+				value := string(bytes)
+				opt.sm(key, value)
+				opt.m(key, value)
+			} else {
+				log.Fatalln(err)
+			}
+			return key
+		},
+	))
 }
 
 func withDot(str string) string {

@@ -1,3 +1,4 @@
+FatalOnErr = true
 InboundType = "json"
 InboundMustArray = false
 InStorage = "./in"

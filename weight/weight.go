@@ -2,6 +2,9 @@ package weight
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +33,7 @@ type RstWt struct {
 	Err  error
 }
 
+// Without Time Factor
 // func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, domainpath, scorepath string) {
 
 // 	defer wg.Done()
@@ -61,6 +65,7 @@ type RstWt struct {
 // 	}
 // }
 
+// With Time Factor
 func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, domainpath, timepath, scorepath string) {
 
 	defer wg.Done()
@@ -73,34 +78,52 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 		}
 	}
 
-	mDomDtOTF := make(map[string]string)
+	var (
+		mDomDtOTF   = make(map[string]string)
+		chRstObj, _ = jt.ScanObject(strings.NewReader(value.(string)), false, false, jt.OUT_ORI)
+	)
 
-	chRstObj, _ := jt.ScanObject(strings.NewReader(value.(string)), false, false, jt.OUT_ORI)
 	for rst := range chRstObj {
-		domdt := gjson.GetMany(rst.Obj, domainpath, timepath)
-		if dom := domdt[0].String(); dom != "" {
-			if utc := domdt[1].String(); utc != "" {
-				dt, _ := utc2dtm(utc)
-				key := fmt.Sprintf("%s@%s", dom, dt)
-				mDomDtOTF[key] = util.PushJA(mDomDtOTF[key], rst.Obj)
-			}
+		var (
+			domdt = gjson.GetMany(rst.Obj, domainpath, timepath)
+			dom   = domdt[0].String()
+			utc   = domdt[1].String()
+		)
+		if dom != "" && utc != "" {
+			dt, _ := utc2dtm(utc)
+			key := fmt.Sprintf("%s@%s", dom, dt)
+			mDomDtOTF[key] = util.PushJA(mDomDtOTF[key], rst.Obj)
 		}
 	}
 
 	for domdt, otfrst := range mDomDtOTF {
-		ss := strings.Split(domdt, "@")
-		dom, dt := ss[0], ss[1]
-		score, n := 0, 0
-		chRstObj, _ := jt.ScanObject(strings.NewReader(otfrst), false, false, jt.OUT_ORI)
+
+		var (
+			ss          = strings.Split(domdt, "@")
+			dom, dt     = ss[0], ss[1]
+			wtScore, n  = 0, 0
+			err         error
+			chRstObj, _ = jt.ScanObject(strings.NewReader(otfrst), false, false, jt.OUT_ORI)
+		)
+
 		for rst := range chRstObj {
-			if gjson.Get(rst.Obj, scorepath).String() == "" {
-				chRstWt <- RstWt{Err: fmt.Errorf("OTF..<scaledScore> missing@ Student(%s)-Domain(%s)-Date(%s)", sid, dom, dt)}
+			scorerst := gjson.Get(rst.Obj, scorepath)
+			score := int(scorerst.Int())
+			if score == 0 && scorerst.String() == "" {
+				err = fmt.Errorf("OTF..<scaledScore> missing@ Student(%s)-Domain(%s)-Date(%s)", sid, dom, dt)
+				if foe, _ := strconv.ParseBool(os.Getenv("FatalOnErr")); foe {
+					log.Fatalln(err) // debug, alert to let benthos to remove invalid
+				}
+				continue
 			}
-			score += int(gjson.Get(rst.Obj, scorepath).Int())
+			wtScore += score
 			n++
 		}
-		score = score / n
-		chRstWt <- RstWt{Info: wtInfo(sid, dom, dt, score, otfrst)}
+
+		if n != 0 {
+			wtScore = wtScore / n
+			chRstWt <- RstWt{Info: wtInfo(sid, dom, dt, wtScore, otfrst), Err: err}
+		}
 	}
 }
 
@@ -110,8 +133,8 @@ func AsyncProc(sidGrp []string, opt *store.Option, domainpath, timepath, scorepa
 	wg := &sync.WaitGroup{}
 	wg.Add(len(sidGrp))
 	for _, sid := range sidGrp {
-		go Process(chRstWt, wg, opt, sid, domainpath, timepath, scorepath)
 		// go Process(chRstWt, wg, opt, sid, domainpath, scorepath)
+		go Process(chRstWt, wg, opt, sid, domainpath, timepath, scorepath)
 	}
 	go func() {
 		wg.Wait()
