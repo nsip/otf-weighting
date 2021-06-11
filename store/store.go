@@ -11,25 +11,54 @@ import (
 	"sync/atomic"
 	"time"
 
+	jt "github.com/cdutwhu/json-tool"
 	"github.com/digisan/gotk/io"
 	"github.com/digisan/gotk/slice/ts"
 	"github.com/google/uuid"
+	"github.com/nsip/otf-weighting/util"
 )
 
 type (
 	Option struct {
-		Dir, Ext       string                                       // file directory & file extension
-		OnFileConflict func(existing, coming string) (bool, string) // file conflict solver
-		SM             *sync.Map                                    // sync map ptr
-		OnSMapConflict func(existing, coming string) (bool, string) // sync map conflict solver
-		M              map[interface{}]interface{}                  // map
-		OnMapConflict  func(existing, coming string) (bool, string) // map conflict solver
-		// more ...
-
 		WG  *sync.WaitGroup
 		Mtx *sync.Mutex
+
+		Dir, Ext       string                                       // file directory & file extension
+		OnFileConflict func(existing, coming string) (bool, string) // file conflict solver
+
+		M             map[interface{}]interface{}                  // map
+		OnMapConflict func(existing, coming string) (bool, string) // map conflict solver
+
+		SM             *sync.Map                                    // sync map ptr
+		OnSMapConflict func(existing, coming string) (bool, string) // sync map conflict solver
+		// more ...
 	}
 )
+
+func NewOption(dir, ext string, wantM, wantSM bool) *Option {
+
+	opt := &Option{
+		WG:             &sync.WaitGroup{},
+		Mtx:            &sync.Mutex{},
+		Dir:            dir,
+		Ext:            ext,
+		OnFileConflict: util.FactoryAppendJA(),
+	}
+
+	if wantM {
+		opt.M = map[interface{}]interface{}{}
+		opt.OnMapConflict = util.FactoryAppendJA()
+	}
+
+	if wantSM {
+		opt.SM = &sync.Map{}
+		opt.OnSMapConflict = util.FactoryAppendJA()
+	}
+
+	// more ...
+
+	return opt
+}
 
 func (opt *Option) file(key, value string, repeatIdx bool) {
 	if opt.Dir != "" {
@@ -157,21 +186,10 @@ func (opt *Option) batchSave(key, value string, repeatIdx bool) {
 			if save, content := opt.OnFileConflict(str, value); save {
 				opt.file(key, content, repeatIdx)
 			}
-			goto SM
-		}
-	}
-	opt.file(key, value, repeatIdx)
-
-SM:
-	if opt.OnSMapConflict != nil {
-		if str, ok := opt.smFetch(key); ok { // conflicts
-			if save, content := opt.OnSMapConflict(str, value); save {
-				opt.sm(key, content)
-			}
 			goto M
 		}
 	}
-	opt.sm(key, value)
+	opt.file(key, value, repeatIdx)
 
 M:
 	if opt.OnMapConflict != nil {
@@ -179,10 +197,21 @@ M:
 			if save, content := opt.OnMapConflict(str, value); save {
 				opt.m(key, content)
 			}
-			goto NEXT
+			goto SM
 		}
 	}
 	opt.m(key, value)
+
+SM:
+	if opt.OnSMapConflict != nil {
+		if str, ok := opt.smFetch(key); ok { // conflicts
+			if save, content := opt.OnSMapConflict(str, value); save {
+				opt.sm(key, content)
+			}
+			goto NEXT
+		}
+	}
+	opt.sm(key, value)
 
 	// ... more
 NEXT:
@@ -225,7 +254,11 @@ func (opt *Option) SaveKeyAsID(value string) {
 
 ///////////////////////////////////////////////////////
 
-func (opt *Option) Synchronise() int {
+func withDot(str string) string {
+	return "." + strings.TrimLeft(str, ".")
+}
+
+func (opt *Option) FileSyncToMap() int {
 	files, _, err := io.WalkFileDir(opt.Dir, true)
 	if err != nil {
 		return 0
@@ -238,8 +271,8 @@ func (opt *Option) Synchronise() int {
 			key := fname[:strings.IndexAny(fname, "(.")]
 			if bytes, err := os.ReadFile(e); err == nil {
 				value := string(bytes)
-				opt.sm(key, value)
 				opt.m(key, value)
+				opt.sm(key, value)
 			} else {
 				log.Fatalln(err)
 			}
@@ -248,15 +281,43 @@ func (opt *Option) Synchronise() int {
 	))
 }
 
-func withDot(str string) string {
-	return "." + strings.TrimLeft(str, ".")
+func (opt *Option) AppendJSONFromFile(dir string) int {
+	files, _, err := io.WalkFileDir(dir, true)
+	if err != nil {
+		return 0
+	}
+	return len(ts.FM(
+		files,
+		func(i int, e string) bool { return strings.HasSuffix(e, withDot("json")) },
+		func(i int, e string) string {
+			fname := filepath.Base(e)
+			key := fname[:strings.IndexAny(fname, "(.")]
+			file, err := os.OpenFile(e, os.O_RDONLY, os.ModePerm)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			defer file.Close()
+
+			ResultOfScan, _ := jt.ScanObject(file, false, true, jt.OUT_MIN)
+			for rst := range ResultOfScan {
+				if rst.Err == nil {
+					opt.Save(key, rst.Obj, true)
+				}
+			}
+
+			return key
+		},
+	))
 }
 
 ///////////////////////////////////////////////////////
 
-func (opt *Option) Clear() {
-	if io.DirExists(opt.Dir) {
-		os.RemoveAll(opt.Dir)
+func (opt *Option) Clear(rmPersistent bool) {
+	if rmPersistent {
+		if io.DirExists(opt.Dir) {
+			os.RemoveAll(opt.Dir)
+		}
+		// more ...
 	}
 	if opt.M != nil {
 		opt.M = make(map[interface{}]interface{})

@@ -17,13 +17,13 @@ func Test_utc2dt(t *testing.T) {
 			args: args{
 				utc: "2021-06-08T07:05:30Z",
 			},
-			wantDt: "20210608",
+			wantDt: "202106",
 			wantTm: "070530",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotDt, gotTm := utc2dtm(tt.args.utc)
+			gotDt, gotTm := utc2dtm(tt.args.utc, "yM", "")
 			if gotDt != tt.wantDt {
 				t.Errorf("utc2dtm() gotDt = %v, want %v", gotDt, tt.wantDt)
 			}

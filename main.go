@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"sync"
+	"strconv"
 
 	jt "github.com/cdutwhu/json-tool"
 	"github.com/digisan/gotk/slice/ts"
@@ -21,71 +21,60 @@ func main() {
 
 	var (
 		cfg        = config.GetConfig("./config/config.toml", "./config.toml")
-		mustarray  = cfg.InboundMustArray
+		mustarray  = cfg.MustInArray
 		sidpath    = cfg.Weighting.StudentIDPath
 		domainpath = cfg.Weighting.DomainPath
 		timepath   = cfg.Weighting.TimePath
 		scorepath  = cfg.Weighting.ScorePath
 
-		optIn = &store.Option{
-			WG:             &sync.WaitGroup{},
-			Mtx:            &sync.Mutex{},
-			Dir:            cfg.InStorage,
-			Ext:            cfg.InboundType,
-			OnFileConflict: util.FactoryAppendJA(),
-			SM:             &sync.Map{},
-			OnSMapConflict: util.FactoryAppendJA(),
-			M:              map[interface{}]interface{}{},
-			OnMapConflict:  util.FactoryAppendJA(),
-		}
-		saveIn = optIn.Save // optIn.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
-
-		optOut = &store.Option{
-			WG:             &sync.WaitGroup{},
-			Mtx:            &sync.Mutex{},
-			Dir:            cfg.OutStorage,
-			Ext:            cfg.OutboundType,
-			OnFileConflict: util.FactoryAppendJA(),
-		}
-		saveOut = optOut.Factory4SaveKeyAsIdx(0)
+		optLocal   = store.NewOption(cfg.In, cfg.InType, true, true)
+		optIn      = optLocal
+		optOut     = store.NewOption(cfg.Out, cfg.OutType, false, false)
+		optOutSave = optOut.Factory4SaveKeyAsIdx(0)
 
 		ilog = log.Factory4IdxLog(0)
 	)
 
 	ilog("starting...")
-
-	if cfg.Weighting.ReferPrevRecord {
-		ilog(fmt.Sprintf("synchronised sid count: %d", optIn.Synchronise()))
-		ilog("existing sid count:", len(optIn.M))
-	}
+	ilog(fmt.Sprintf("synchronised sid count: %d", optIn.FileSyncToMap()))
+	ilog("existing sid count:", len(optIn.M))
 
 	// ------------------------------------------- //
 
 	e := echo.New()
 	e.Use(middleware.BodyLimit("2G"))
 
-	// POST /weight
+	// POST eg. /weight?refprev=true
 	e.POST(cfg.Service.API, func(c echo.Context) error {
 
-		chRstObj, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
+		var (
+			refprev      = c.QueryParam("refprev")
+			chRstObj, ok = jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
+		)
+
+		if rp, err := strconv.ParseBool(refprev); err == nil && !rp {
+			dir := util.MakeTempDir(cfg.InTemp)
+			optIn = store.NewOption(dir, cfg.InType, true, true)
+			defer optLocal.AppendJSONFromFile(dir)
+		}
+		optInSave := optIn.Save // optIn.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
 
 		switch {
 		case !ok && mustarray:
 			return echo.NewHTTPError(http.StatusBadRequest, "Not JSON Array")
 		case !ok:
-			ilog("Not JSON Array")
+			ilog("Single JSON Object")
 		}
 
 		// store once POST student ID group
 		sidGrp := []string{}
-
 		for rst := range chRstObj {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, "Invalid JSON @", rst.Err)
 			}
 			sid := gjson.Get(rst.Obj, sidpath).String() // fetch sid from studentID path
 			sidGrp = append(sidGrp, sid)                // store each sid
-			go saveIn(sid, rst.Obj, true)               // save each otf processed json
+			go optInSave(sid, rst.Obj, true)            // save each otf processed json
 		}
 
 		// wait for storing finish
@@ -100,23 +89,13 @@ func main() {
 			}
 			wtOutput = util.PushJA(wtOutput, rst.Info)
 		}
-		saveOut(wtOutput)
+		optOutSave(wtOutput)
 
 		return c.String(http.StatusOK, wtOutput)
 	})
 
 	// GET eg. /weight?sid=12345&domain=math&date=20210607
 	e.GET(cfg.Service.API, func(c echo.Context) error {
-
-		optAudit := &store.Option{
-			WG:             &sync.WaitGroup{},
-			Mtx:            &sync.Mutex{},
-			Dir:            "./audit",
-			Ext:            "json",
-			OnFileConflict: util.FactoryAppendJA(),
-		}
-		optAudit.Clear()
-		saveAudit := optAudit.Factory4SaveKeyAsIdx(0)
 
 		var (
 			sid     = c.QueryParam("sid")
@@ -142,7 +121,10 @@ func main() {
 				wtOut = util.PushJA(wtOut, rst.Info)
 			}
 		}
-		saveAudit(wtOut)
+
+		optAudit := store.NewOption("./audit", "json", false, false)
+		optAudit.Clear(true)
+		optAudit.Factory4SaveKeyAsIdx(0)(wtOut)
 
 		return c.String(http.StatusOK, wtOut)
 	})

@@ -12,22 +12,22 @@ import (
 
 // Config :
 type Config struct {
-	FatalOnErr       bool
-	InboundType      string
-	InboundMustArray bool
-	InStorage        string
-	OutboundType     string
-	OutStorage       string
-	Service          struct {
+	FatalOnErr  bool
+	InType      string
+	MustInArray bool
+	In          string
+	InTemp      string
+	OutType     string
+	Out         string
+	Service     struct {
 		Port int
 		API  string
 	}
 	Weighting struct {
-		ReferPrevRecord bool
-		StudentIDPath   string
-		DomainPath      string
-		TimePath        string
-		ScorePath       string
+		StudentIDPath string
+		DomainPath    string
+		TimePath      string
+		ScorePath     string
 	}
 }
 
@@ -41,8 +41,8 @@ func GetConfig(configs ...string) *Config {
 		}
 
 		// Directory Process
-		cfg.InStorage = filepath.Clean(cfg.InStorage)
-		cfg.OutStorage = filepath.Clean(cfg.OutStorage)
+		cfg.In = filepath.Clean(cfg.In)
+		cfg.Out = filepath.Clean(cfg.Out)
 
 		// API Process
 		cfg.Service.API = withSlash(cfg.Service.API)

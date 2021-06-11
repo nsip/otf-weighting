@@ -3,6 +3,7 @@
 set -e
 
 rm -rf in
+rm -rf temp
 rm -rf out
 rm -rf audit
 

@@ -1,6 +1,9 @@
 package util
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 func PushJA(existing, coming string) string {
 	if len(existing) > 0 {
@@ -30,4 +33,12 @@ func FactoryAppendJA() func(existing, coming string) (bool, string) {
 		}
 		return true, coming
 	}
+}
+
+func MakeTempDir(dir string) string {
+	if dir == "" {
+		dir = "temp"
+	}
+	milsec := time.Now().UnixNano() / int64(time.Millisecond)
+	return fmt.Sprintf("./%s/%d", dir, milsec)
 }

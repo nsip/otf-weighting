@@ -15,10 +15,35 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func utc2dtm(utc string) (dt, tm string) {
+// yMd : ["yMd", "yM", "y"]
+// hms : ["hms", "hm", "h"]
+func utc2dtm(utc, yMd, hms string) (dt, tm string) {
 	y, M, d, h, m, s := 0, 0, 0, 0, 0, 0
 	fmt.Sscanf(utc, "%04d-%02d-%02dT%02d:%02d:%02dZ", &y, &M, &d, &h, &m, &s)
-	return fmt.Sprintf("%04d%02d%02d", y, M, d), fmt.Sprintf("%02d%02d%02d", h, m, s)
+
+	switch yMd {
+	case "yMd":
+		dt = fmt.Sprintf("%04d%02d%02d", y, M, d)
+	case "yM":
+		dt = fmt.Sprintf("%04d%02d", y, M)
+	case "y":
+		dt = fmt.Sprintf("%04d", y)
+	default:
+		dt = fmt.Sprintf("%04d%02d%02d", y, M, d)
+	}
+
+	switch hms {
+	case "hms":
+		tm = fmt.Sprintf("%02d%02d%02d", h, m, s)
+	case "hm":
+		tm = fmt.Sprintf("%02d%02d", h, m)
+	case "h":
+		tm = fmt.Sprintf("%02d", h)
+	default:
+		tm = fmt.Sprintf("%02d%02d%02d", h, m, s)
+	}
+
+	return
 }
 
 func wtInfo(sid, dom, dt string, score int, others ...string) string {
@@ -90,7 +115,7 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 			utc   = domdt[1].String()
 		)
 		if dom != "" && utc != "" {
-			dt, _ := utc2dtm(utc)
+			dt, _ := utc2dtm(utc, "yM", "")
 			key := fmt.Sprintf("%s@%s", dom, dt)
 			mDomDtOTF[key] = util.PushJA(mDomDtOTF[key], rst.Obj)
 		}

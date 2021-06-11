@@ -2,6 +2,7 @@ FatalOnErr = true
 InboundType = "json"
 InboundMustArray = false
 InStorage = "./in"
+InStorageTemp = "./temp"
 OutboundType = "json"
 OutStorage = "./out"
 
@@ -10,7 +11,6 @@ Port = 1329
 API = "/weight"
 
 [Weighting]
-ReferPrevRecord = true
 StudentIDPath = "otf.id.studentID"
 DomainPath = "meta.capability"
 TimePath="meta.readTimestampUTC"
