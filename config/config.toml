@@ -1,10 +1,10 @@
 FatalOnErr = true
-InboundType = "json"
-InboundMustArray = false
-InStorage = "./in"
-InStorageTemp = "./temp"
-OutboundType = "json"
-OutStorage = "./out"
+InType = "json"
+MustInArray = false
+In = "./in"
+InTemp = "./temp"
+OutType = "json"
+Out = "./out"
 
 [Service]
 Port = 1329
