@@ -27,9 +27,9 @@ func main() {
 		timepath   = cfg.Weighting.TimePath
 		scorepath  = cfg.Weighting.ScorePath
 
-		optLocal   = store.NewOption(cfg.In, cfg.InType, true, true)
+		optLocal   = store.NewOption(cfg.In, cfg.InType, util.Fac4AppendJA, true, true)
 		optIn      = optLocal
-		optOut     = store.NewOption(cfg.Out, cfg.OutType, false, false)
+		optOut     = store.NewOption(cfg.Out, cfg.OutType, util.Fac4AppendJA, false, false)
 		optOutSave = optOut.Factory4SaveKeyAsIdx(0)
 
 		ilog = log.Factory4IdxLog(0)
@@ -54,7 +54,7 @@ func main() {
 
 		if rp, err := strconv.ParseBool(refprev); err == nil && !rp {
 			dir := util.MakeTempDir(cfg.InTemp)
-			optIn = store.NewOption(dir, cfg.InType, true, true)
+			optIn = store.NewOption(dir, cfg.InType, util.Fac4AppendJA, true, true)
 			defer optLocal.AppendJSONFromFile(dir)
 		}
 		optInSave := optIn.Save // optIn.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
@@ -122,7 +122,7 @@ func main() {
 			}
 		}
 
-		optAudit := store.NewOption("./audit", "json", false, false)
+		optAudit := store.NewOption("./audit", "json", util.Fac4AppendJA, false, false)
 		optAudit.Clear(true)
 		optAudit.Factory4SaveKeyAsIdx(0)(wtOut)
 

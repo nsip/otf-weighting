@@ -15,44 +15,44 @@ import (
 	"github.com/digisan/gotk/io"
 	"github.com/digisan/gotk/slice/ts"
 	"github.com/google/uuid"
-	"github.com/nsip/otf-weighting/util"
 )
 
 type (
+	Fac4Solver func() func(existing, coming interface{}) (bool, interface{})
+
 	Option struct {
-		WG  *sync.WaitGroup
-		Mtx *sync.Mutex
+		wg  *sync.WaitGroup
+		mtx *sync.Mutex
 
-		Dir, Ext       string                                       // file directory & file extension
-		OnFileConflict func(existing, coming string) (bool, string) // file conflict solver
-
-		M             map[interface{}]interface{}                  // map
-		OnMapConflict func(existing, coming string) (bool, string) // map conflict solver
-
-		SM             *sync.Map                                    // sync map ptr
-		OnSMapConflict func(existing, coming string) (bool, string) // sync map conflict solver
+		onConflict [3]func(existing, coming interface{}) (bool, interface{}) // conflict solvers
+		dir, ext   string                                                    // file directory & file extension
+		M          map[interface{}]interface{}                               // map
+		SM         *sync.Map                                                 // sync map ptr
 		// more ...
 	}
 )
 
-func NewOption(dir, ext string, wantM, wantSM bool) *Option {
+func NewOption(dir, ext string, fac4solver Fac4Solver, wantM, wantSM bool) *Option {
 
 	opt := &Option{
-		WG:             &sync.WaitGroup{},
-		Mtx:            &sync.Mutex{},
-		Dir:            dir,
-		Ext:            ext,
-		OnFileConflict: util.FactoryAppendJA(),
+		wg:  &sync.WaitGroup{},
+		mtx: &sync.Mutex{},
+	}
+
+	if dir != "" {
+		opt.dir = dir
+		opt.ext = ext
+		opt.onConflict[0] = fac4solver()
 	}
 
 	if wantM {
 		opt.M = map[interface{}]interface{}{}
-		opt.OnMapConflict = util.FactoryAppendJA()
+		opt.onConflict[1] = fac4solver()
 	}
 
 	if wantSM {
 		opt.SM = &sync.Map{}
-		opt.OnSMapConflict = util.FactoryAppendJA()
+		opt.onConflict[2] = fac4solver()
 	}
 
 	// more ...
@@ -61,10 +61,10 @@ func NewOption(dir, ext string, wantM, wantSM bool) *Option {
 }
 
 func (opt *Option) file(key, value string, repeatIdx bool) {
-	if opt.Dir != "" {
-		absdir, _ := io.AbsPath(opt.Dir, false)
+	if opt.dir != "" {
+		absdir, _ := io.AbsPath(opt.dir, false)
 		fullpath := filepath.Join(absdir, key) // full abs file name path without extension
-		ext := strings.TrimLeft(opt.Ext, ".")  // extension without prefix '.'
+		ext := strings.TrimLeft(opt.ext, ".")  // extension without prefix '.'
 		prevpath := ""
 
 		if repeatIdx {
@@ -94,10 +94,10 @@ func (opt *Option) file(key, value string, repeatIdx bool) {
 }
 
 func (opt *Option) fileFetch(key string, repeatIdx bool) (string, bool) {
-	if opt.Dir != "" {
-		absdir, _ := io.AbsPath(opt.Dir, false)
+	if opt.dir != "" {
+		absdir, _ := io.AbsPath(opt.dir, false)
 		fullpath := filepath.Join(absdir, key)
-		ext := strings.TrimLeft(opt.Ext, ".")
+		ext := strings.TrimLeft(opt.ext, ".")
 
 		if repeatIdx {
 			// search path with .../key(number).ext
@@ -122,36 +122,36 @@ func (opt *Option) fileFetch(key string, repeatIdx bool) (string, bool) {
 
 // ----------------------- //
 
-func (opt *Option) sm(key, value string) {
-	if opt.SM != nil {
-		opt.SM.Store(key, value)
-	}
-}
-
-func (opt *Option) smFetch(key string) (string, bool) {
-	if opt.SM != nil {
-		if value, ok := opt.SM.Load(key); ok {
-			return value.(string), ok
-		}
-	}
-	return "", false
-}
-
-// ----------------------- //
-
-func (opt *Option) m(key, value string) {
+func (opt *Option) m(key, value interface{}) {
 	if opt.M != nil {
 		opt.M[key] = value
 	}
 }
 
-func (opt *Option) mFetch(key string) (string, bool) {
+func (opt *Option) mFetch(key interface{}) (interface{}, bool) {
 	if opt.M != nil {
 		if value, ok := opt.M[key]; ok {
-			return value.(string), ok
+			return value, ok
 		}
 	}
-	return "", false
+	return nil, false
+}
+
+// ----------------------- //
+
+func (opt *Option) sm(key, value interface{}) {
+	if opt.SM != nil {
+		opt.SM.Store(key, value)
+	}
+}
+
+func (opt *Option) smFetch(key interface{}) (interface{}, bool) {
+	if opt.SM != nil {
+		if value, ok := opt.SM.Load(key); ok {
+			return value, ok
+		}
+	}
+	return nil, false
 }
 
 // more save / get func ...
@@ -161,19 +161,19 @@ func (opt *Option) mFetch(key string) (string, bool) {
 func (opt *Option) batchSave(key, value string, repeatIdx bool) {
 
 	defer func() {
-		if opt.WG != nil {
-			opt.WG.Done()
+		if opt.wg != nil {
+			opt.wg.Done()
 		}
-		if opt.Mtx != nil {
-			opt.Mtx.Unlock()
+		if opt.mtx != nil {
+			opt.mtx.Unlock()
 		}
 	}()
 	// work adds first, then mutex lock !
-	if opt.WG != nil {
-		opt.WG.Add(1)
+	if opt.wg != nil {
+		opt.wg.Add(1)
 	}
-	if opt.Mtx != nil {
-		opt.Mtx.Lock()
+	if opt.mtx != nil {
+		opt.mtx.Lock()
 	}
 
 	// no key, no saving
@@ -181,10 +181,10 @@ func (opt *Option) batchSave(key, value string, repeatIdx bool) {
 		return
 	}
 
-	if opt.OnFileConflict != nil {
+	if solver := opt.onConflict[0]; solver != nil {
 		if str, ok := opt.fileFetch(key, repeatIdx); ok { // conflicts
-			if save, content := opt.OnFileConflict(str, value); save {
-				opt.file(key, content, repeatIdx)
+			if save, content := solver(str, value); save {
+				opt.file(key, content.(string), repeatIdx)
 			}
 			goto M
 		}
@@ -192,9 +192,9 @@ func (opt *Option) batchSave(key, value string, repeatIdx bool) {
 	opt.file(key, value, repeatIdx)
 
 M:
-	if opt.OnMapConflict != nil {
+	if solver := opt.onConflict[1]; solver != nil {
 		if str, ok := opt.mFetch(key); ok { // conflicts
-			if save, content := opt.OnMapConflict(str, value); save {
+			if save, content := solver(str, value); save {
 				opt.m(key, content)
 			}
 			goto SM
@@ -203,9 +203,9 @@ M:
 	opt.m(key, value)
 
 SM:
-	if opt.OnSMapConflict != nil {
+	if solver := opt.onConflict[2]; solver != nil {
 		if str, ok := opt.smFetch(key); ok { // conflicts
-			if save, content := opt.OnSMapConflict(str, value); save {
+			if save, content := solver(str, value); save {
 				opt.sm(key, content)
 			}
 			goto NEXT
@@ -218,8 +218,8 @@ NEXT:
 }
 
 func (opt *Option) Wait() {
-	if opt.WG != nil {
-		opt.WG.Wait()
+	if opt.wg != nil {
+		opt.wg.Wait()
 	}
 }
 
@@ -229,7 +229,7 @@ func (opt *Option) Save(key, value string, fileNameRepeatIdx bool) {
 	opt.batchSave(key, value, fileNameRepeatIdx)
 }
 
-func (opt *Option) Factory4SaveKeyAsIdx(start int) func(value string) {
+func (opt *Option) Fac4SaveKeyAsIdx(start int) func(value string) {
 	idx := int64(start - 1)
 	return func(value string) {
 		opt.batchSave(fmt.Sprintf("%04d", atomic.AddInt64(&idx, 1)), value, false)
@@ -259,13 +259,13 @@ func withDot(str string) string {
 }
 
 func (opt *Option) FileSyncToMap() int {
-	files, _, err := io.WalkFileDir(opt.Dir, true)
+	files, _, err := io.WalkFileDir(opt.dir, true)
 	if err != nil {
 		return 0
 	}
 	return len(ts.FM(
 		files,
-		func(i int, e string) bool { return strings.HasSuffix(e, withDot(opt.Ext)) },
+		func(i int, e string) bool { return strings.HasSuffix(e, withDot(opt.ext)) },
 		func(i int, e string) string {
 			fname := filepath.Base(e)
 			key := fname[:strings.IndexAny(fname, "(.")]
@@ -314,8 +314,8 @@ func (opt *Option) AppendJSONFromFile(dir string) int {
 
 func (opt *Option) Clear(rmPersistent bool) {
 	if rmPersistent {
-		if io.DirExists(opt.Dir) {
-			os.RemoveAll(opt.Dir)
+		if io.DirExists(opt.dir) {
+			os.RemoveAll(opt.dir)
 		}
 		// more ...
 	}

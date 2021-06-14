@@ -104,8 +104,9 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 	}
 
 	var (
-		mDomDtOTF   = make(map[string]string)
-		chRstObj, _ = jt.ScanObject(strings.NewReader(value.(string)), false, false, jt.OUT_ORI)
+		FatalOnErr, _ = strconv.ParseBool(os.Getenv("FatalOnErr"))
+		mDomDtOTF     = make(map[string]string)
+		chRstObj, _   = jt.ScanObject(strings.NewReader(value.(string)), false, false, jt.OUT_ORI)
 	)
 
 	for rst := range chRstObj {
@@ -136,7 +137,7 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 			score := int(scorerst.Int())
 			if score == 0 && scorerst.String() == "" {
 				err = fmt.Errorf("OTF..<scaledScore> missing@ Student(%s)-Domain(%s)-Date(%s)", sid, dom, dt)
-				if foe, _ := strconv.ParseBool(os.Getenv("FatalOnErr")); foe {
+				if FatalOnErr {
 					log.Fatalln(err) // debug, alert to let benthos to remove invalid
 				}
 				continue
