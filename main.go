@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"strconv"
 
-	jt "github.com/cdutwhu/json-tool"
+	store "github.com/digisan/data-block/local-kv"
 	"github.com/digisan/gotk/slice/ts"
+	jt "github.com/digisan/json-tool"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/nsip/otf-weighting/config"
 	"github.com/nsip/otf-weighting/log"
-	"github.com/nsip/otf-weighting/store"
 	"github.com/nsip/otf-weighting/util"
 	"github.com/nsip/otf-weighting/weight"
 	"github.com/tidwall/gjson"
@@ -30,7 +30,7 @@ func main() {
 		optLocal   = store.NewOption(cfg.In, cfg.InType, util.Fac4AppendJA, true, true)
 		optIn      = optLocal
 		optOut     = store.NewOption(cfg.Out, cfg.OutType, util.Fac4AppendJA, false, false)
-		optOutSave = optOut.Factory4SaveKeyAsIdx(0)
+		optOutSave = optOut.Fac4SaveWithIdxKey(0)
 
 		ilog = log.Factory4IdxLog(0)
 	)
@@ -124,7 +124,7 @@ func main() {
 
 		optAudit := store.NewOption("./audit", "json", util.Fac4AppendJA, false, false)
 		optAudit.Clear(true)
-		optAudit.Factory4SaveKeyAsIdx(0)(wtOut)
+		optAudit.Fac4SaveWithIdxKey(0)(wtOut)
 
 		return c.String(http.StatusOK, wtOut)
 	})

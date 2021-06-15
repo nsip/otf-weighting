@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	jt "github.com/cdutwhu/json-tool"
-	"github.com/nsip/otf-weighting/store"
+	store "github.com/digisan/data-block/local-kv"
+	jt "github.com/digisan/json-tool"
 	"github.com/nsip/otf-weighting/util"
 	"github.com/tidwall/gjson"
 )
