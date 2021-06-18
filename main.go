@@ -8,10 +8,10 @@ import (
 	store "github.com/digisan/data-block/local-kv"
 	"github.com/digisan/gotk/slice/ts"
 	jt "github.com/digisan/json-tool"
+	lk "github.com/digisan/logkit"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/nsip/otf-weighting/config"
-	"github.com/nsip/otf-weighting/log"
 	"github.com/nsip/otf-weighting/util"
 	"github.com/nsip/otf-weighting/weight"
 	"github.com/tidwall/gjson"
@@ -32,12 +32,12 @@ func main() {
 		optOut     = store.NewOption(cfg.Out, cfg.OutType, util.Fac4AppendJA, false, false)
 		optOutSave = optOut.Fac4SaveWithIdxKey(0)
 
-		ilog = log.Factory4IdxLog(0)
+		ilog = lk.Fac4GrpIdxLogF("", 0, lk.INFO, false)
 	)
 
 	ilog("starting...")
-	ilog(fmt.Sprintf("synchronised sid count: %d", optIn.FileSyncToMap()))
-	ilog("existing sid count:", len(optIn.M))
+	ilog("synchronised sid count: %d", optIn.FileSyncToMap())
+	ilog("existing sid count: %d", len(optIn.M))
 
 	// ------------------------------------------- //
 
