@@ -46,11 +46,11 @@ func utc2dtm(utc, yMd, hms string) (dt, tm string) {
 	return
 }
 
-func wtInfo(sid, dom, dt string, score int, others ...string) string {
+func wtInfo(sid, pl, dt string, score int, others ...string) string {
 	if len(others) > 0 {
-		return fmt.Sprintf(`{"studentID":"%s","domain":"%s","date":"%s","weightScore":%d,"refer":%s}`, sid, dom, dt, score, others[0])
+		return fmt.Sprintf(`{"studentID":"%s","progressionLevel":"%s","date":"%s","weightScore":%d,"refer":%s}`, sid, pl, dt, score, others[0])
 	}
-	return fmt.Sprintf(`{"studentID":"%s","domain":"%s","date":"%s","weightScore":%d}`, sid, dom, dt, score)
+	return fmt.Sprintf(`{"studentID":"%s","progressionLevel":"%s","date":"%s","weightScore":%d}`, sid, pl, dt, score)
 }
 
 type RstWt struct {
@@ -91,7 +91,7 @@ type RstWt struct {
 // }
 
 // With Time Factor
-func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, domainpath, timepath, scorepath string) {
+func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, proglvlpath, timepath0, timepath1, scorepath string) {
 
 	defer wg.Done()
 
@@ -105,28 +105,41 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 
 	var (
 		FatalOnErr, _ = strconv.ParseBool(os.Getenv("FatalOnErr"))
-		mDomDtOTF     = make(map[string]string)
+		mProgLvlDtOTF = make(map[string]string)
 		chRstObj, _   = jt.ScanObject(strings.NewReader(value.(string)), false, false, jt.OUT_ORI)
 	)
 
 	for rst := range chRstObj {
 		var (
-			domdt = gjson.GetMany(rst.Obj, domainpath, timepath)
-			dom   = domdt[0].String()
-			utc   = domdt[1].String()
+			pldt = gjson.GetMany(rst.Obj, proglvlpath, timepath0, timepath1)
+			pl   = pldt[0].String()
+			utc  = pldt[1].String()
+			utc1 = pldt[2].String()
 		)
-		if dom != "" && utc != "" {
+
+		for i, c := range pl {
+			if c >= '0' && c <= '9' {
+				pl = pl[:i]
+				break
+			}
+		}
+
+		if utc == "" {
+			utc = utc1
+		}
+
+		if pl != "" && utc != "" {
 			dt, _ := utc2dtm(utc, "yM", "")
-			key := fmt.Sprintf("%s@%s", dom, dt)
-			mDomDtOTF[key] = util.PushJA(mDomDtOTF[key], rst.Obj)
+			key := fmt.Sprintf("%s@%s", pl, dt)
+			mProgLvlDtOTF[key] = util.PushJA(mProgLvlDtOTF[key], rst.Obj)
 		}
 	}
 
-	for domdt, otfrst := range mDomDtOTF {
+	for proglvl, otfrst := range mProgLvlDtOTF {
 
 		var (
-			ss          = strings.Split(domdt, "@")
-			dom, dt     = ss[0], ss[1]
+			ss          = strings.Split(proglvl, "@")
+			pl, dt      = ss[0], ss[1]
 			wtScore, n  = 0, 0
 			err         error
 			chRstObj, _ = jt.ScanObject(strings.NewReader(otfrst), false, false, jt.OUT_ORI)
@@ -136,7 +149,7 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 			scorerst := gjson.Get(rst.Obj, scorepath)
 			score := int(scorerst.Int())
 			if score == 0 && scorerst.String() == "" {
-				err = fmt.Errorf("OTF..<scaledScore> missing@ Student(%s)-Domain(%s)-Date(%s)", sid, dom, dt)
+				err = fmt.Errorf("OTF..<scaledScore> missing@ Student(%s)-ProgressionLevel(%s)-Date(%s)", sid, pl, dt)
 				if FatalOnErr {
 					log.Fatalln(err) // debug, alert to let benthos to remove invalid
 				}
@@ -148,19 +161,19 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, d
 
 		if n != 0 {
 			wtScore = wtScore / n
-			chRstWt <- RstWt{Info: wtInfo(sid, dom, dt, wtScore, otfrst), Err: err}
+			chRstWt <- RstWt{Info: wtInfo(sid, pl, dt, wtScore, otfrst), Err: err}
 		}
 	}
 }
 
-func AsyncProc(sidGrp []string, opt *store.Option, domainpath, timepath, scorepath string) <-chan RstWt {
+func AsyncProc(sidGrp []string, opt *store.Option, proglvlpath, timepath0, timepath1, scorepath string) <-chan RstWt {
 
 	chRstWt := make(chan RstWt, len(sidGrp))
 	wg := &sync.WaitGroup{}
 	wg.Add(len(sidGrp))
 	for _, sid := range sidGrp {
 		// go Process(chRstWt, wg, opt, sid, domainpath, scorepath)
-		go Process(chRstWt, wg, opt, sid, domainpath, timepath, scorepath)
+		go Process(chRstWt, wg, opt, sid, proglvlpath, timepath0, timepath1, scorepath)
 	}
 	go func() {
 		wg.Wait()

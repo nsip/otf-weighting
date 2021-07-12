@@ -24,10 +24,11 @@ type Config struct {
 		API  string
 	}
 	Weighting struct {
-		StudentIDPath string
-		DomainPath    string
-		TimePath      string
-		ScorePath     string
+		StudentIDPath        string
+		ProgressionLevelPath string
+		TimePath0            string
+		TimePath1            string
+		ScorePath            string
 	}
 }
 
@@ -52,7 +53,7 @@ func GetConfig(configs ...string) *Config {
 
 		return cfg
 	}
-	log.Fatalln("Report Config File is Missing or Error")
+	log.Fatalln("OTF Weighting Config File is Missing or Error")
 	return nil
 }
 

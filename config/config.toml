@@ -12,6 +12,7 @@ API = "/weight"
 
 [Weighting]
 StudentIDPath = "otf.id.studentID"
-DomainPath = "meta.capability"
-TimePath="meta.readTimestampUTC"
+ProgressionLevelPath = "otf.progressionLevel"
+TimePath0 = "original.test.date_administered"
+TimePath1 = "meta.readTimestampUTC"
 ScorePath = "otf.level.calculatedScore.scaledScore"

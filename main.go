@@ -20,12 +20,13 @@ import (
 func main() {
 
 	var (
-		cfg        = config.GetConfig("./config/config.toml", "./config.toml")
-		mustarray  = cfg.MustInArray
-		sidpath    = cfg.Weighting.StudentIDPath
-		domainpath = cfg.Weighting.DomainPath
-		timepath   = cfg.Weighting.TimePath
-		scorepath  = cfg.Weighting.ScorePath
+		cfg         = config.GetConfig("./config/config.toml", "./config.toml")
+		mustarray   = cfg.MustInArray
+		sidpath     = cfg.Weighting.StudentIDPath
+		proglvlpath = cfg.Weighting.ProgressionLevelPath
+		timepath0   = cfg.Weighting.TimePath0
+		timepath1   = cfg.Weighting.TimePath1
+		scorepath   = cfg.Weighting.ScorePath
 
 		optLocal   = store.NewOption(cfg.In, cfg.InType, util.Fac4AppendJA, true, true)
 		optIn      = optLocal
@@ -82,7 +83,7 @@ func main() {
 
 		// process each sid's score weighting
 		wtOutput := ""
-		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), optIn, domainpath, timepath, scorepath)
+		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), optIn, proglvlpath, timepath0, timepath1, scorepath)
 		for rst := range chRstWt {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
@@ -94,15 +95,15 @@ func main() {
 		return c.String(http.StatusOK, wtOutput)
 	})
 
-	// GET eg. /weight?sid=12345&domain=math&date=20210607
+	// GET eg. /weight?sid=12345&progressionlevel=LWCrT&date=20210607
 	e.GET(cfg.Service.API, func(c echo.Context) error {
 
 		var (
 			sid     = c.QueryParam("sid")
-			domain  = c.QueryParam("domain")
+			proglvl = c.QueryParam("progressionlevel")
 			date    = c.QueryParam("date")
 			wtOut   = ""
-			chRstWt = weight.AsyncProc([]string{sid}, optIn, domainpath, timepath, scorepath)
+			chRstWt = weight.AsyncProc([]string{sid}, optIn, proglvlpath, timepath0, timepath1, scorepath)
 		)
 
 		for rst := range chRstWt {
@@ -110,14 +111,14 @@ func main() {
 				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
 
-			domValue := gjson.Get(rst.Info, "domain").String()
+			plValue := gjson.Get(rst.Info, "progressionLevel").String()
 			dateValue := gjson.Get(rst.Info, "date").String()
 
 			switch {
-			case (domValue == domain && dateValue == date) ||
-				(domValue == domain && date == "") ||
-				(domain == "" && dateValue == date) ||
-				(domain == "" && date == ""):
+			case (plValue == proglvl && dateValue == date) ||
+				(plValue == proglvl && date == "") ||
+				(proglvl == "" && dateValue == date) ||
+				(proglvl == "" && date == ""):
 				wtOut = util.PushJA(wtOut, rst.Info)
 			}
 		}
