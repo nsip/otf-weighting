@@ -3,9 +3,11 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	store "github.com/digisan/data-block/local-kv"
+	gotkio "github.com/digisan/gotk/io"
 	"github.com/digisan/gotk/slice/ts"
 	jt "github.com/digisan/json-tool"
 	lk "github.com/digisan/logkit"
@@ -40,6 +42,9 @@ func main() {
 	ilog("synchronised sid count: %d", optIn.FileSyncToMap())
 	ilog("existing sid count: %d", len(optIn.M))
 
+	// temp for test
+	mGroup := make(map[string][]string) ///////////////////////////////////
+
 	// ------------------------------------------- //
 
 	e := echo.New()
@@ -49,6 +54,7 @@ func main() {
 	e.POST(cfg.Service.API, func(c echo.Context) error {
 
 		var (
+			key4obj      = ""
 			refprev      = c.QueryParam("refprev")
 			chRstObj, ok = jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
 		)
@@ -76,26 +82,66 @@ func main() {
 			sid := gjson.Get(rst.Obj, sidpath).String() // fetch sid from studentID path
 			sidGrp = append(sidGrp, sid)                // store each sid
 			go optInSave(sid, rst.Obj, true)            // save each otf processed json
+
+			// make key4obj
+			r := gjson.GetMany(rst.Obj,
+				cfg.Weighting.StudentIDPath,
+				cfg.Weighting.ProgressionLevelPath,
+				cfg.Weighting.TimePath0,
+				cfg.Weighting.TimePath1,
+			)
+			id, pl, dt, dt1 := r[0].String(), r[1].String(), r[2].String(), r[3].String()
+			for i, c := range pl {
+				if c >= '0' && c <= '9' {
+					pl = pl[:i]
+					break
+				}
+			}
+			if dt == "" {
+				dt = dt1
+			}
+			dt = dt[:4] + dt[5:7] // dt & dt1 both have '2020-06-02'
+			key4obj = fmt.Sprintf("%s#%s#%s", id, pl, dt)
+			fmt.Println("------------------------------", key4obj)
 		}
 
 		// wait for storing finish
 		optIn.Wait()
 
 		// process each sid's score weighting
-		wtOutput := ""
-		chRstWt := weight.AsyncProc(ts.MkSet(sidGrp...), optIn, proglvlpath, timepath0, timepath1, scorepath)
-		for rst := range chRstWt {
+		for rst := range weight.AsyncProc(ts.MkSet(sidGrp...), optIn, proglvlpath, timepath0, timepath1, scorepath) {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
-			wtOutput = util.PushJA(wtOutput, rst.Info)
-		}
-		optOutSave(wtOutput)
+			optOutSave(rst.Info)
 
-		return c.String(http.StatusOK, wtOutput)
+			//////////////////////////////////////////
+
+			r := gjson.GetMany(rst.Info, "studentID", "progressionLevel", "date")
+			id, pl, dt := r[0].String(), r[1].String(), r[2].String()
+			key := fmt.Sprintf("%s#%s#%s", id, pl, dt)
+			mGroup[key] = append(mGroup[key], rst.Info)
+		}
+
+		//////////////////////////////////////////
+		os.RemoveAll("stat.txt")
+		for k, v := range mGroup {
+			data := fmt.Sprintf("%s --- %d", k, len(v))
+			gotkio.MustAppendFile("stat.txt", []byte(data), true)
+		}
+
+		grp := mGroup[key4obj]
+		if len(grp) == 0 {
+			fmt.Println(key4obj)
+			return c.String(http.StatusOK, "")
+		}
+
+		last := grp[len(grp)-1]
+		optOutSave(last)
+		return c.String(http.StatusOK, last)
 	})
 
-	// GET eg. /weight?sid=12345&progressionlevel=LWCrT&date=20210607
+	// GET eg. /weight?sid=12345&progressionlevel=LWCrT&date=202106
 	e.GET(cfg.Service.API, func(c echo.Context) error {
 
 		var (
@@ -103,10 +149,9 @@ func main() {
 			proglvl = c.QueryParam("progressionlevel")
 			date    = c.QueryParam("date")
 			wtOut   = ""
-			chRstWt = weight.AsyncProc([]string{sid}, optIn, proglvlpath, timepath0, timepath1, scorepath)
 		)
 
-		for rst := range chRstWt {
+		for rst := range weight.AsyncProc([]string{sid}, optIn, proglvlpath, timepath0, timepath1, scorepath) {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
