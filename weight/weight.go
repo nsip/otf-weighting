@@ -106,14 +106,14 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, p
 	for proglvl, otfrst := range mProgLvlDtOTF {
 
 		var (
-			ss          = strings.Split(proglvl, "@")
-			pl, dt      = ss[0], ss[1]
-			wtScore, n  = 0, 0
-			err         error
-			chRstObj, _ = jt.ScanObject(strings.NewReader(otfrst), false, false, jt.OUT_ORI)
+			ss               = strings.Split(proglvl, "@")
+			pl, dt           = ss[0], ss[1]
+			wtScore, n       = 0, 0
+			err              error
+			chRstObj4Each, _ = jt.ScanObject(strings.NewReader(otfrst), false, false, jt.OUT_ORI)
 		)
 
-		for rst := range chRstObj {
+		for rst := range chRstObj4Each {
 			scorerst := gjson.Get(rst.Obj, scorepath)
 			score := int(scorerst.Int())
 			if score == 0 && scorerst.String() == "" {

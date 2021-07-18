@@ -7,9 +7,10 @@ require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/digisan/data-block v0.0.2
 	github.com/digisan/gotk v0.0.30
-	github.com/digisan/json-tool v0.0.3
+	github.com/digisan/json-tool v0.0.4
 	github.com/digisan/logkit v0.0.2
-	github.com/labstack/echo/v4 v4.3.0
+	github.com/google/uuid v1.3.0 // indirect
+	github.com/labstack/echo/v4 v4.4.0
 	github.com/mattn/go-isatty v0.0.13 // indirect
 	github.com/tidwall/gjson v1.8.1
 	github.com/tidwall/pretty v1.2.0 // indirect

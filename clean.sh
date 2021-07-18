@@ -6,6 +6,8 @@ rm -rf in
 rm -rf temp
 rm -rf out
 rm -rf audit
+rm -f panic.txt
+rm -f stat.txt
 
 for f in $(find ./ -name '*.log' -or -name '*.doc'); do rm $f; done
 

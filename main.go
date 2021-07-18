@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 
 	store "github.com/digisan/data-block/local-kv"
 	gotkio "github.com/digisan/gotk/io"
@@ -35,15 +36,19 @@ func main() {
 		optOut     = store.NewOption(cfg.Out, cfg.OutType, util.Fac4AppendJA, false, false)
 		optOutSave = optOut.Fac4SaveWithIdxKey(0)
 
-		ilog = lk.Fac4GrpIdxLogF("", 0, lk.INFO, false)
+		ilog     = lk.Fac4GrpIdxLogF("", 1, lk.INFO, false)
+		iCntlog  = lk.Fac4GrpIdxLogF("--------------------", 1, lk.INFO, false)
+		iCntPost = lk.Fac4GrpIdxLogF("********************", 1, lk.INFO, false)
+
+		mtx = &sync.Mutex{}
 	)
 
-	ilog("starting...")
-	ilog("synchronised sid count: %d", optIn.FileSyncToMap())
-	ilog("existing sid count: %d", len(optIn.M))
+	lk.Log("starting...")
+	lk.Log("synchronised sid count: %d", optIn.FileSyncToMap())
+	lk.Log("existing sid count: %d", len(optIn.M))
 
-	// temp for test
-	mGroup := make(map[string][]string) ///////////////////////////////////
+	// same key for multiple test score list
+	mGroup := make(map[string][]string)
 
 	// ------------------------------------------- //
 
@@ -52,18 +57,26 @@ func main() {
 
 	// POST eg. /weight?refprev=true
 	e.POST(cfg.Service.API, func(c echo.Context) error {
+		defer mtx.Unlock()
+		mtx.Lock()
+
+		iCntPost("--- IN POST ---")
+
+		// time.Sleep(time.Millisecond * 10)
+		// return c.String(http.StatusOK, "")
 
 		var (
-			key4obj      = ""
-			refprev      = c.QueryParam("refprev")
-			chRstObj, ok = jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
+			key4obj = ""
+			refprev = c.QueryParam("refprev")
 		)
 
+		chRstObj, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
 		if rp, err := strconv.ParseBool(refprev); err == nil && !rp {
 			dir := util.MakeTempDir(cfg.InTemp)
 			optIn = store.NewOption(dir, cfg.InType, util.Fac4AppendJA, true, true)
 			defer optLocal.AppendJSONFromFile(dir)
 		}
+
 		optInSave := optIn.Save // optIn.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
 
 		switch {
@@ -71,6 +84,8 @@ func main() {
 			return echo.NewHTTPError(http.StatusBadRequest, "Not JSON Array")
 		case !ok:
 			ilog("Single JSON Object")
+		case ok:
+			ilog("JSON Array")
 		}
 
 		// store once POST student ID group
@@ -81,15 +96,10 @@ func main() {
 			}
 			sid := gjson.Get(rst.Obj, sidpath).String() // fetch sid from studentID path
 			sidGrp = append(sidGrp, sid)                // store each sid
-			go optInSave(sid, rst.Obj, true)            // save each otf processed json
+			optInSave(sid, rst.Obj, true)               // save each otf processed json
 
 			// make key4obj
-			r := gjson.GetMany(rst.Obj,
-				cfg.Weighting.StudentIDPath,
-				cfg.Weighting.ProgressionLevelPath,
-				cfg.Weighting.TimePath0,
-				cfg.Weighting.TimePath1,
-			)
+			r := gjson.GetMany(rst.Obj, sidpath, proglvlpath, timepath0, timepath1)
 			id, pl, dt, dt1 := r[0].String(), r[1].String(), r[2].String(), r[3].String()
 			for i, c := range pl {
 				if c >= '0' && c <= '9' {
@@ -102,18 +112,15 @@ func main() {
 			}
 			dt = dt[:4] + dt[5:7] // dt & dt1 both have '2020-06-02'
 			key4obj = fmt.Sprintf("%s#%s#%s", id, pl, dt)
-			fmt.Println("------------------------------", key4obj)
+			iCntlog(key4obj)
 		}
-
-		// wait for storing finish
-		optIn.Wait()
 
 		// process each sid's score weighting
 		for rst := range weight.AsyncProc(ts.MkSet(sidGrp...), optIn, proglvlpath, timepath0, timepath1, scorepath) {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
-			optOutSave(rst.Info)
+			// optOutSave(rst.Info) // temp check
 
 			//////////////////////////////////////////
 
@@ -121,6 +128,7 @@ func main() {
 			id, pl, dt := r[0].String(), r[1].String(), r[2].String()
 			key := fmt.Sprintf("%s#%s#%s", id, pl, dt)
 			mGroup[key] = append(mGroup[key], rst.Info)
+			// iCntlog("%s weighted", key)
 		}
 
 		//////////////////////////////////////////
@@ -132,8 +140,9 @@ func main() {
 
 		grp := mGroup[key4obj]
 		if len(grp) == 0 {
-			fmt.Println(key4obj)
-			return c.String(http.StatusOK, "")
+			lk.Warn("ERROR key4obj @ %s", key4obj)
+			gotkio.MustAppendFile("panic.txt", []byte(key4obj), true)
+			panic("ERROR")
 		}
 
 		last := grp[len(grp)-1]
