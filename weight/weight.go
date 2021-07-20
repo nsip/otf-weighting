@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	store "github.com/digisan/data-block/local-kv"
+	"github.com/digisan/data-block/store"
 	jt "github.com/digisan/json-tool"
 	"github.com/nsip/otf-weighting/util"
 	"github.com/tidwall/gjson"
@@ -59,13 +59,13 @@ type RstWt struct {
 }
 
 // With Time Factor
-func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, proglvlpath, timepath0, timepath1, scorepath string) {
+func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, st *store.KVStorage, sid, proglvlpath, timepath0, timepath1, scorepath string) {
 
 	defer wg.Done()
 
-	value, ok := opt.M[sid]
+	value, ok := st.KVs[0].Get(sid)
 	if !ok {
-		if value, ok = opt.SM.Load(sid); !ok {
+		if value, ok = st.KVs[1].Get(sid); !ok {
 			chRstWt <- RstWt{Err: fmt.Errorf("sid@%s is not in map or sync.map storage", sid)}
 			return
 		}
@@ -134,13 +134,13 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, opt *store.Option, sid, p
 	}
 }
 
-func AsyncProc(sidGrp []string, opt *store.Option, proglvlpath, timepath0, timepath1, scorepath string) <-chan RstWt {
+func AsyncProc(sidGrp []string, st *store.KVStorage, proglvlpath, timepath0, timepath1, scorepath string) <-chan RstWt {
 
 	chRstWt := make(chan RstWt, len(sidGrp))
 	wg := &sync.WaitGroup{}
 	wg.Add(len(sidGrp))
 	for _, sid := range sidGrp {
-		go Process(chRstWt, wg, opt, sid, proglvlpath, timepath0, timepath1, scorepath)
+		go Process(chRstWt, wg, st, sid, proglvlpath, timepath0, timepath1, scorepath)
 	}
 	go func() {
 		wg.Wait()

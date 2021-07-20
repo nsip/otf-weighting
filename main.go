@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"sync"
 
-	store "github.com/digisan/data-block/local-kv"
+	"github.com/digisan/data-block/store"
 	gotkio "github.com/digisan/gotk/io"
 	"github.com/digisan/gotk/slice/ts"
 	jt "github.com/digisan/json-tool"
@@ -31,10 +30,10 @@ func main() {
 		timepath1   = cfg.Weighting.TimePath1
 		scorepath   = cfg.Weighting.ScorePath
 
-		optLocal   = store.NewOption(cfg.In, cfg.InType, util.Fac4AppendJA, true, true)
-		optIn      = optLocal
-		optOut     = store.NewOption(cfg.Out, cfg.OutType, util.Fac4AppendJA, false, false)
-		optOutSave = optOut.Fac4SaveWithIdxKey(0)
+		s4in    = store.NewKV(cfg.In, cfg.InType, true, true)
+		inSave  = s4in.Save
+		s4out   = store.NewKV(cfg.Out, cfg.OutType, true, true)
+		outSave = s4out.Fac4SaveWithIdxKey(0)
 
 		ilog     = lk.Fac4GrpIdxLogF("", 1, lk.INFO, false)
 		iCntlog  = lk.Fac4GrpIdxLogF("--------------------", 1, lk.INFO, false)
@@ -43,9 +42,12 @@ func main() {
 		mtx = &sync.Mutex{}
 	)
 
+	s4in.OnConflict = util.AppendJA
+	s4out.OnConflict = util.AppendJA
+
 	lk.Log("starting...")
-	lk.Log("synchronised sid count: %d", optIn.FileSyncToMap())
-	lk.Log("existing sid count: %d", len(optIn.M))
+	lk.Log("synchronised sid count: %d", s4in.FileSyncToMap())
+	lk.Log("existing sid count: %d", s4in.KVs[0].Len())
 
 	// same key for multiple test score list
 	mGroup := make(map[string][]string)
@@ -67,17 +69,16 @@ func main() {
 
 		var (
 			key4obj = ""
-			refprev = c.QueryParam("refprev")
+			_       = c.QueryParam("refprev")
 		)
 
 		chRstObj, ok := jt.ScanObject(c.Request().Body, mustarray, true, jt.OUT_MIN)
-		if rp, err := strconv.ParseBool(refprev); err == nil && !rp {
-			dir := util.MakeTempDir(cfg.InTemp)
-			optIn = store.NewOption(dir, cfg.InType, util.Fac4AppendJA, true, true)
-			defer optLocal.AppendJSONFromFile(dir)
-		}
 
-		optInSave := optIn.Save // optIn.Factory4SaveKeyAsIdx(0) SaveKeyAsTS SaveKeyAsID
+		// if rp, err := strconv.ParseBool(refprev); err == nil && !rp {
+		// 	dir := util.MakeTempDir(cfg.InTemp)
+		// 	optIn = store.NewKV(dir, cfg.InType, true, true)
+		// 	defer optLocal.AppendJSONFromFile(dir)
+		// }
 
 		switch {
 		case !ok && mustarray:
@@ -96,7 +97,7 @@ func main() {
 			}
 			sid := gjson.Get(rst.Obj, sidpath).String() // fetch sid from studentID path
 			sidGrp = append(sidGrp, sid)                // store each sid
-			optInSave(sid, rst.Obj, true)               // save each otf processed json
+			inSave(sid, rst.Obj)                        // save each otf processed json
 
 			// make key4obj
 			r := gjson.GetMany(rst.Obj, sidpath, proglvlpath, timepath0, timepath1)
@@ -116,11 +117,11 @@ func main() {
 		}
 
 		// process each sid's score weighting
-		for rst := range weight.AsyncProc(ts.MkSet(sidGrp...), optIn, proglvlpath, timepath0, timepath1, scorepath) {
+		for rst := range weight.AsyncProc(ts.MkSet(sidGrp...), s4in, proglvlpath, timepath0, timepath1, scorepath) {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
-			// optOutSave(rst.Info) // temp check
+			// outSave(rst.Info) // temp check
 
 			//////////////////////////////////////////
 
@@ -146,7 +147,7 @@ func main() {
 		}
 
 		last := grp[len(grp)-1]
-		optOutSave(last)
+		outSave(last)
 		return c.String(http.StatusOK, last)
 	})
 
@@ -160,7 +161,7 @@ func main() {
 			wtOut   = ""
 		)
 
-		for rst := range weight.AsyncProc([]string{sid}, optIn, proglvlpath, timepath0, timepath1, scorepath) {
+		for rst := range weight.AsyncProc([]string{sid}, s4in, proglvlpath, timepath0, timepath1, scorepath) {
 			if rst.Err != nil {
 				return echo.NewHTTPError(http.StatusBadRequest, rst.Err.Error())
 			}
@@ -177,7 +178,7 @@ func main() {
 			}
 		}
 
-		optAudit := store.NewOption("./audit", "json", util.Fac4AppendJA, false, false)
+		optAudit := store.NewKV("./audit", "json", false, false)
 		optAudit.Clear(true)
 		optAudit.Fac4SaveWithIdxKey(0)(wtOut)
 
