@@ -5,11 +5,11 @@ github.com/clbanning/mxj v1.8.4/go.mod h1:BVjHeAH+rl9rs6f+QIpeRl0tfu10SXn1pUSa5P
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible h1:7qlOGliEKZXTDg6OTjfoBKDXWrumCAMpl/TFQ4/5kLM=
 github.com/dgrijalva/jwt-go v3.2.0+incompatible/go.mod h1:E3ru+11k8xSBh+hMPgOLZmtrrCbhqsmaPHjLKYnJCaQ=
-github.com/digisan/data-block v0.0.7 h1:7K4x5BIWNdksjCmG6nPu9balbYy18yB3wafkRE+qF3M=
-github.com/digisan/data-block v0.0.7/go.mod h1:yjOX7AGElPZ0VuPati1ANQjJwvZ4Qkga5Q9kqUB5glI=
+github.com/digisan/data-block v0.0.9 h1:FkbYVirRXVACnPGddn1oKA4cdrKen98J10Jtr+gjvgg=
+github.com/digisan/data-block v0.0.9/go.mod h1:mHEwgeZSCUBpW69kPGK8WiEywn2jQQ6ZN55EBYuaSa4=
 github.com/digisan/gotk v0.0.26/go.mod h1:UQ8YCI0uvFowgH6q7cI6FGDy2vMLmCIgLb/E3HqkUU0=
-github.com/digisan/gotk v0.0.30 h1:/AH1UGahS5laVH+QNYpD4ak+BoXsF3A73BkOE5TfT04=
-github.com/digisan/gotk v0.0.30/go.mod h1:UQ8YCI0uvFowgH6q7cI6FGDy2vMLmCIgLb/E3HqkUU0=
+github.com/digisan/gotk v0.0.31 h1:AEvXQh0mdEd14emVJK627KUYnKxCVmD6lC3FzTmIs7M=
+github.com/digisan/gotk v0.0.31/go.mod h1:UQ8YCI0uvFowgH6q7cI6FGDy2vMLmCIgLb/E3HqkUU0=
 github.com/digisan/json-tool v0.0.4 h1:zQ/BHtorW86SqMfubt3n5iyv+9mQAigJOwwurWOpQ9w=
 github.com/digisan/json-tool v0.0.4/go.mod h1:BESreGPw+Zx+KtsvLBzgNd31huq7dyh3i+I1QBcnB74=
 github.com/digisan/logkit v0.0.0-20210615071848-4bf12920ed58/go.mod h1:mJ/Ipl9Cu/xSs+IYHBokxR0BMO+fgYWECD4qhn1YtWc=

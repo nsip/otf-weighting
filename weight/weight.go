@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/digisan/data-block/store"
+	"github.com/digisan/gotk/slice/ts"
 	jt "github.com/digisan/json-tool"
+	lk "github.com/digisan/logkit"
 	"github.com/nsip/otf-weighting/util"
 	"github.com/tidwall/gjson"
 )
@@ -46,20 +48,25 @@ func utc2dtm(utc, yMd, hms string) (dt, tm string) {
 	return
 }
 
-func wtInfo(sid, pl, dt string, score int, others ...string) string {
+func wInfo(sid, pl, dt string, score int, others ...string) string {
 	if len(others) > 0 {
 		return fmt.Sprintf(`{"studentID":"%s","progressionLevel":"%s","date":"%s","weightScore":%d,"refer":%s}`, sid, pl, dt, score, others[0])
 	}
 	return fmt.Sprintf(`{"studentID":"%s","progressionLevel":"%s","date":"%s","weightScore":%d}`, sid, pl, dt, score)
 }
 
+func kInfo(sid, pl, dt string, score int) string {
+	return fmt.Sprintf(`%s@%s@%s--%d`, sid, pl, dt, score)
+}
+
 type RstWt struct {
+	Key  string
 	Info string
 	Err  error
 }
 
 // With Time Factor
-func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, st *store.KVStorage, sid, proglvlpath, timepath0, timepath1, scorepath string) {
+func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, st *store.KVStorage, sid, plpath, tpath0, tpath1, spath string) {
 
 	defer wg.Done()
 
@@ -74,12 +81,12 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, st *store.KVStorage, sid,
 	var (
 		FatalOnErr, _ = strconv.ParseBool(os.Getenv("FatalOnErr"))
 		mProgLvlDtOTF = make(map[string]string)
-		chRstObj, _   = jt.ScanObject(strings.NewReader(value.(string)), false, false, jt.OUT_ORI)
+		chRstObj, _   = jt.ScanObject(strings.NewReader(value.(string)), false, false, jt.OUT_MIN)
 	)
 
 	for rst := range chRstObj {
 		var (
-			pldt = gjson.GetMany(rst.Obj, proglvlpath, timepath0, timepath1)
+			pldt = gjson.GetMany(rst.Obj, plpath, tpath0, tpath1)
 			pl   = pldt[0].String()
 			utc  = pldt[1].String()
 			utc1 = pldt[2].String()
@@ -114,7 +121,7 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, st *store.KVStorage, sid,
 		)
 
 		for rst := range chRstObj4Each {
-			scorerst := gjson.Get(rst.Obj, scorepath)
+			scorerst := gjson.Get(rst.Obj, spath)
 			score := int(scorerst.Int())
 			if score == 0 && scorerst.String() == "" {
 				err = fmt.Errorf("OTF..<scaledScore> missing@ Student(%s)-ProgressionLevel(%s)-Date(%s)", sid, pl, dt)
@@ -129,18 +136,17 @@ func Process(chRstWt chan<- RstWt, wg *sync.WaitGroup, st *store.KVStorage, sid,
 
 		if n != 0 {
 			wtScore = wtScore / n
-			chRstWt <- RstWt{Info: wtInfo(sid, pl, dt, wtScore, otfrst), Err: err}
+			chRstWt <- RstWt{Key: kInfo(sid, pl, dt, wtScore), Info: wInfo(sid, pl, dt, wtScore, otfrst), Err: err}
 		}
 	}
 }
 
-func AsyncProc(sidGrp []string, st *store.KVStorage, proglvlpath, timepath0, timepath1, scorepath string) <-chan RstWt {
-
+func AsyncProc(st *store.KVStorage, sidGrp []string, plpath, tpath0, tpath1, spath string) <-chan RstWt {
 	chRstWt := make(chan RstWt, len(sidGrp))
 	wg := &sync.WaitGroup{}
 	wg.Add(len(sidGrp))
 	for _, sid := range sidGrp {
-		go Process(chRstWt, wg, st, sid, proglvlpath, timepath0, timepath1, scorepath)
+		go Process(chRstWt, wg, st, sid, plpath, tpath0, tpath1, spath)
 	}
 	go func() {
 		wg.Wait()
@@ -148,4 +154,34 @@ func AsyncProc(sidGrp []string, st *store.KVStorage, proglvlpath, timepath0, tim
 		close(chRstWt)
 	}()
 	return chRstWt
+}
+
+func MakeResult(s4in, s4out *store.KVStorage, cSID <-chan string, plpath, tpath0, tpath1, spath string) error {
+
+	var (
+		ilog   = lk.Fac4GrpIdxLogF("", 1, lk.INFO, false)
+		SIDGrp = []string{}
+	)
+
+DUMP:
+	for {
+		select {
+		case sid := <-cSID:
+			SIDGrp = append(SIDGrp, sid)
+		default:
+			break DUMP
+		}
+	}
+	SIDGrp = ts.MkSet(SIDGrp...)
+	lk.Log("%v - %d", SIDGrp, len(SIDGrp))
+
+	// process each sid's score weighting
+	for rst := range AsyncProc(s4in, SIDGrp, plpath, tpath0, tpath1, spath) {
+		if rst.Err != nil {
+			return rst.Err
+		}
+		s4out.Save(rst.Key, rst.Info)
+		ilog("%s Saved", rst.Key)
+	}
+	return nil
 }

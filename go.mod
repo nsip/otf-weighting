@@ -4,8 +4,8 @@ go 1.16
 
 require (
 	github.com/BurntSushi/toml v0.3.1
-	github.com/digisan/data-block v0.0.7
-	github.com/digisan/gotk v0.0.30
+	github.com/digisan/data-block v0.0.9
+	github.com/digisan/gotk v0.0.31
 	github.com/digisan/json-tool v0.0.4
 	github.com/digisan/logkit v0.0.2
 	github.com/labstack/echo/v4 v4.4.0
